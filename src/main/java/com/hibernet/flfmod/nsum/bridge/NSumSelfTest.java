@@ -60,7 +60,7 @@ public final class NSumSelfTest {
             // 2. Runtime 安装
             String sourceDir = System.getProperty("nsum.runtime.source", "");
             boolean runtimeOk = NSumRuntime.status().installed();
-            if (!runtimeOk && !sourceDir.isBlank()) {
+            if (!sourceDir.isBlank()) {
                 try {
                     NSumRuntime.install(Path.of(sourceDir), "selftest");
                     runtimeOk = NSumRuntime.status().installed();
@@ -90,8 +90,10 @@ public final class NSumSelfTest {
             } else {
                 LOG.info("[NSUM-TEST] 同步: SKIP（缺 Runtime 或 -Dnsum.selftest.repo）");
             }
-            passed += syncOk ? 1 : 0;
-            failed += syncOk ? 0 : 1;
+            if (runtimeOk && !written.repo.isBlank()) {
+                passed += syncOk ? 1 : 0;
+                failed += syncOk ? 0 : 1;
+            }
 
             // 4. 元数据拉取（站点未部署/离线时 SKIP，不计失败）
             boolean metadataOk = false;
@@ -209,6 +211,16 @@ public final class NSumSelfTest {
             }
             passed += visualsOk ? 1 : 0;
             failed += visualsOk ? 0 : 1;
+            // 9. 端到端：导入导出包 + 真实同步（-Dnsum.selftest.e2e.zip=<zip>）
+            String e2eZip = System.getProperty("nsum.selftest.e2e.zip", "");
+            if (!e2eZip.isBlank()) {
+                String e2eTarget = System.getProperty("nsum.selftest.e2e.target", "");
+                boolean ok = NSumE2E.run(Path.of(e2eZip), e2eTarget.isBlank() ? null : Path.of(e2eTarget));
+                passed += ok ? 1 : 0;
+                failed += ok ? 0 : 1;
+            } else {
+                LOG.info("[NSUM-TEST] 端到端: SKIP（未指定 nsum.selftest.e2e.zip）");
+            }
             LOG.info("[NSUM-TEST] 结果: passed={} failed={}", passed, failed);
         } catch (Throwable t) {
             LOG.error("[NSUM-TEST] 自检异常", t);
