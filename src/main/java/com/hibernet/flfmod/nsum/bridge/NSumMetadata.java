@@ -86,10 +86,7 @@ public final class NSumMetadata {
     private static String fetch(String type) throws IOException, InterruptedException {
         String base = System.getProperty("nsum.metadata.base", DEFAULT_BASE);
         String url = base + "/api/metadata?type=" + type;
-        HttpClient client = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
+        HttpClient client = NSumHttp.newClient();
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofSeconds(20))
                 .header("User-Agent", "nsum-bridge")

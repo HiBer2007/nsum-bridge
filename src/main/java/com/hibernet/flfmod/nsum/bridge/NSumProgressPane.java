@@ -53,12 +53,24 @@ public final class NSumProgressPane extends VBox implements NSumHicInstaller.Pro
     }
 
     public void finish(String text) {
-        progress(100, text);
-        title.setText("完成");
+        runOnFx(() -> {
+            title.setText("完成");
+            progress(100, text);
+        });
     }
 
     public void fail(String text) {
-        title.setText("失败");
-        progress(0, text);
+        runOnFx(() -> {
+            title.setText("失败");
+            progress(0, text);
+        });
+    }
+
+    private static void runOnFx(Runnable action) {
+        if (Platform.isFxApplicationThread()) {
+            action.run();
+        } else {
+            Platform.runLater(action);
+        }
     }
 }

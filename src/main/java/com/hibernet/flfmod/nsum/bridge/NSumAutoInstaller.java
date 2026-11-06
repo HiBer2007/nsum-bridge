@@ -124,12 +124,32 @@ public final class NSumAutoInstaller {
             } catch (Exception e) {
                 LOG.error("[NSUM] Runtime 安装失败", e);
                 pane.fail(e.getMessage());
-                Platform.runLater(() -> Controllers.dialog(
-                        "安装失败：" + e.getMessage()
-                                + "\n\n可选办法：\n"
-                                + "1) 手动下载 Runtime 安装包/压缩包，放进 .hmcl/nsum/downloads/ 后点「从 downloads 安装」；\n"
-                                + "2) 在 .hmcl/nsum/config.json 里设置 runtimeSourceDir（NSUM 部署目录）后点「安装 Runtime」。",
-                        "NSUM", MessageDialogPane.MessageType.ERROR));
+                String message = String.valueOf(e.getMessage());
+                boolean sslFailure = message.contains("PKIX")
+                        || message.contains("certificate")
+                        || message.contains("SSLHandshake")
+                        || message.contains("CertPath");
+                Platform.runLater(() -> {
+                    if (sslFailure) {
+                        Controllers.confirm(
+                                "下载时证书校验失败：\n" + message
+                                        + "\n\n是否跳过证书校验重试？（仅本次进程有效，连接仍为 HTTPS）",
+                                "NSUM", MessageDialogPane.MessageType.WARNING,
+                                () -> {
+                                    LOG.warn("[NSUM] 用户同意跳过证书校验重试下载");
+                                    System.setProperty("nsum.insecureTls", "true");
+                                    doInstall(project, version, update);
+                                },
+                                () -> LOG.info("[NSUM] 用户取消不安全重试"));
+                        return;
+                    }
+                    Controllers.dialog(
+                            "安装失败：" + message
+                                    + "\n\n可选办法：\n"
+                                    + "1) 手动下载 Runtime 安装包/压缩包，放进 .hmcl/nsum/downloads/ 后点「从 downloads 安装」；\n"
+                                    + "2) 在 .hmcl/nsum/config.json 里设置 runtimeSourceDir（NSUM 部署目录）后点「安装 Runtime」。",
+                            "NSUM", MessageDialogPane.MessageType.ERROR);
+                });
             }
         });
     }
@@ -213,10 +233,7 @@ public final class NSumAutoInstaller {
         Path target = dir.resolve(fileName);
         LOG.info("[NSUM] 下载 Runtime: {} -> {}", entry.downloadLink(), target);
 
-        HttpClient client = HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .connectTimeout(java.time.Duration.ofSeconds(15))
-                .build();
+        HttpClient client = NSumHttp.newClient();
         HttpRequest request = HttpRequest.newBuilder(URI.create(entry.downloadLink()))
                 .header("User-Agent", "nsum-bridge")
                 .GET()
@@ -327,8 +344,7 @@ public final class NSumAutoInstaller {
                 String fileName = entry.downloadLink().substring(
                         entry.downloadLink().lastIndexOf('/') + 1);
                 Path target = dir.resolve(fileName.isBlank() ? "nsum-bridge-" + entry.version() + ".jar" : fileName);
-                HttpClient client = HttpClient.newBuilder()
-                        .followRedirects(HttpClient.Redirect.NORMAL).build();
+                HttpClient client = NSumHttp.newClient();
                 HttpResponse<Path> response = client.send(
                         HttpRequest.newBuilder(URI.create(entry.downloadLink()))
                                 .header("User-Agent", "nsum-bridge").GET().build(),
