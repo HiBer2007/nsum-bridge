@@ -16,7 +16,6 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -25,17 +24,16 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-/// 用 **HIC 安装器**安装 NSUM Runtime：`--cli --json --silent --path <runtime>`，
-/// 读取 HIC 的 JSON 进度事件并回显到 HMCL。
+/// 用 **HIC CLI 壳**（`hci_cli.exe`）无人值守安装 NSUM Runtime。
 ///
-/// <p>安装流程随 bridge 提供（`/nsum-install-flow.json`，其中快捷方式步骤
-/// `enabled:false`，**不会**创建桌面/开始菜单项）。</p>
+/// <p>CLI 分发目录由 NSUM 构建产出（`nsum_cli_dist/`：`hci_cli.exe` + `product.json`
+/// + `install.json` + `LICENSE.txt` + `deploy/`）。`install.json` 内快捷方式步骤
+/// `enabled:false`，**不会创建桌面/开始菜单项**。</p>
 public final class NSumHicInstaller {
 
     private static final Logger LOG = LogManager.getLogger(NSumHicInstaller.class);
 
     public interface ProgressSink {
-        /// percent: 0-100；detail 为步骤/说明
         void progress(int percent, String detail);
     }
 
@@ -45,26 +43,36 @@ public final class NSumHicInstaller {
     private NSumHicInstaller() {
     }
 
-    /// 用安装器把 Runtime 装到 `targetDir`。
-    public static Result install(Path installerExe, Path targetDir, ProgressSink sink) {
-        if (installerExe == null || !Files.isRegularFile(installerExe)) {
-            return new Result(false, -1, "安装器不存在: " + installerExe);
+    /// 用 CLI 分发目录安装（目录含 hci_cli.exe + product.json + install.json + deploy/）。
+    public static Result installFromDist(Path distDir, Path targetDir, ProgressSink sink) {
+        if (distDir == null || !Files.isDirectory(distDir)) {
+            return new Result(false, -1, "CLI 分发目录不存在: " + distDir);
         }
-        try {
-            Path flow = extractFlow();
-            List<String> command = new ArrayList<>();
-            command.add(installerExe.toString());
-            command.add("--cli");
-            command.add("--json");
-            command.add("--silent");
-            command.add("--path");
-            command.add(targetDir.toString());
-            command.add("--flow");
-            command.add(flow.toString());
+        Path exe = distDir.resolve("hci_cli.exe");
+        Path product = distDir.resolve("product.json");
+        Path flow = distDir.resolve("install.json");
+        if (!Files.isRegularFile(exe) || !Files.isRegularFile(product)
+                || !Files.isRegularFile(flow)) {
+            return new Result(false, -1,
+                    "CLI 分发目录缺少 hci_cli.exe/product.json/install.json: " + distDir);
+        }
+        List<String> args = new ArrayList<>(List.of(
+                "--cli", "--json", "--silent",
+                "--product", product.getFileName().toString(),
+                "--flow", flow.getFileName().toString(),
+                "--path", targetDir.toString()));
+        return run(exe, distDir, args, sink);
+    }
 
-            LOG.info("[NSUM] 调用 HIC 安装器: {}", String.join(" ", command));
+    /// 启动 HIC CLI 并解析 `=====JSON-BEGIN/END=====` 中的 progress/message/finish。
+    private static Result run(Path exe, Path workDir, List<String> args, ProgressSink sink) {
+        List<String> command = new ArrayList<>();
+        command.add(exe.toString());
+        command.addAll(args);
+        LOG.info("[NSUM] 调用 HIC CLI 安装器: {}", String.join(" ", command));
+        try {
             ProcessBuilder builder = new ProcessBuilder(command)
-                    .directory(installerExe.toAbsolutePath().getParent().toFile())
+                    .directory(workDir.toFile())
                     .redirectErrorStream(true);
             Process process = builder.start();
 
@@ -98,12 +106,14 @@ public final class NSumHicInstaller {
                 return new Result(false, -1, "安装超时（30 分钟）");
             }
             int exit = process.exitValue();
-            LOG.info("[NSUM] HIC 安装器退出码: {}", exit);
-            return new Result(exit == 0, exit,
-                    exit == 0 ? "安装完成" : "安装器退出码 " + exit);
-        } catch (Exception e) {
-            LOG.error("[NSUM] HIC 安装失败", e);
+            LOG.info("[NSUM] HIC CLI 退出码: {}", exit);
+            return new Result(exit == 0, exit, exit == 0 ? "安装完成" : "安装器退出码 " + exit);
+        } catch (IOException e) {
+            LOG.error("[NSUM] HIC CLI 启动失败", e);
             return new Result(false, -1, e.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return new Result(false, -1, "安装被中断");
         }
     }
 
@@ -114,26 +124,23 @@ public final class NSumHicInstaller {
         try {
             JsonObject event = JsonParser.parseString(json).getAsJsonObject();
             String type = event.has("event") ? event.get("event").getAsString() : "";
-            JsonObject payload = event.has("payload") && event.get("payload").isJsonObject()
-                    ? event.getAsJsonObject("payload")
-                    : event;
             switch (type) {
                 case "progress" -> {
-                    int percent = payload.has("percent") ? payload.get("percent").getAsInt() : 0;
-                    String step = payload.has("step") ? payload.get("step").getAsString() : "";
-                    String detail = payload.has("detail") ? payload.get("detail").getAsString() : "";
+                    int percent = event.has("percent") ? event.get("percent").getAsInt() : 0;
+                    String step = event.has("step") ? event.get("step").getAsString() : "";
+                    String detail = event.has("detail") ? event.get("detail").getAsString() : "";
                     if (sink != null) {
                         sink.progress(percent, (step.isEmpty() ? "" : step + " ") + detail);
                     }
                 }
                 case "message" -> {
-                    boolean error = payload.has("error") && payload.get("error").getAsBoolean();
-                    String text = payload.has("text") ? payload.get("text").getAsString() : "";
+                    boolean error = event.has("error") && event.get("error").getAsBoolean();
+                    String text = event.has("text") ? event.get("text").getAsString() : "";
                     LOG.log(error ? org.apache.logging.log4j.Level.WARN
                             : org.apache.logging.log4j.Level.INFO, "[NSUM] [hic] {}", text);
                 }
                 case "finish" -> {
-                    boolean ok = payload.has("success") && payload.get("success").getAsBoolean();
+                    boolean ok = event.has("success") && event.get("success").getAsBoolean();
                     if (sink != null) {
                         sink.progress(100, ok ? "完成" : "失败");
                     }
@@ -145,18 +152,5 @@ public final class NSumHicInstaller {
             LOG.debug("[NSUM] 解析 HIC 事件失败: {}", e.toString());
         }
         return false;
-    }
-
-    private static Path extractFlow() throws IOException {
-        Path dir = NSumPaths.nsumDir().resolve("flow");
-        Files.createDirectories(dir);
-        Path flow = dir.resolve("nsum-install-flow.json");
-        try (InputStream in = NSumHicInstaller.class.getResourceAsStream("/nsum-install-flow.json")) {
-            if (in == null) {
-                throw new IOException("bridge 内缺少 nsum-install-flow.json 资源");
-            }
-            Files.copy(in, flow, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-        }
-        return flow;
     }
 }

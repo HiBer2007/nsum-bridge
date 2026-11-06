@@ -94,16 +94,24 @@ public final class NSumAutoInstaller {
             try {
                 Path archive = download(finalEntry);
                 String name = archive.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
-                if (name.endsWith(".exe")) {
-                    // HIC 安装器：CLI + JSON 进度，通过 pane 回显到 HMCL GUI；
-                    // 安装流程内快捷方式步骤 enabled:false，不会创建桌面/开始菜单项。
-                    pane.progress(0, "运行安装器…");
-                    NSumHicInstaller.Result result = NSumHicInstaller.install(
-                            archive, NSumPaths.runtimeDir(), pane);
+                Path cliDir = null;
+                if (name.endsWith(".zip")) {
+                    Path root = unpackRoot(archive);
+                    cliDir = findFileNear(root, "hci_cli.exe");
+                    if (cliDir == null) {
+                        cliDir = null;
+                    }
+                }
+                if (cliDir != null) {
+                    // HIC CLI 分发目录：--cli --json --silent，进度回显到 HMCL，
+                    // install.json 内快捷方式 enabled:false（不建桌面/开始菜单项）。
+                    pane.progress(0, "运行 HIC CLI 安装器…");
+                    NSumHicInstaller.Result result = NSumHicInstaller.installFromDist(
+                            cliDir, NSumPaths.runtimeDir(), pane);
                     if (!result.success()) {
                         throw new IOException(result.message());
                     }
-                    NSumRuntime.markInstalled(version, "hic:" + archive.getFileName());
+                    NSumRuntime.markInstalled(version, "hic-cli:" + archive.getFileName());
                     pane.finish("Runtime 已安装到 " + NSumPaths.runtimeDir());
                 } else {
                     Path sourceDir = unpack(archive);
@@ -168,6 +176,29 @@ public final class NSumAutoInstaller {
         }
     }
 
+    private static Path unpackRoot(Path archive) throws IOException {
+        Path root = Files.createTempDirectory("nsum-dist");
+        try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(archive))) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                Path destination = root.resolve(entry.getName()).normalize();
+                if (!destination.startsWith(root)) continue;
+                if (entry.isDirectory()) { Files.createDirectories(destination); continue; }
+                Files.createDirectories(destination.getParent());
+                Files.copy(zip, destination, StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+        return root;
+    }
+
+    private static Path findFileNear(Path root, String fileName) {
+        try (var walk = Files.walk(root, 3)) {
+            return walk.filter(p -> p.getFileName().toString().equalsIgnoreCase(fileName))
+                    .map(Path::getParent).findFirst().orElse(null);
+        } catch (IOException e) {
+            return null;
+        }
+    }
     private static Path download(NSumMetadata.Entry entry) throws IOException, InterruptedException {
         Path dir = NSumPaths.nsumDir().resolve("downloads");
         Files.createDirectories(dir);
