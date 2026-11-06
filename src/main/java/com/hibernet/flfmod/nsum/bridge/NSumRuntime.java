@@ -101,6 +101,21 @@ public final class NSumRuntime {
         return status();
     }
 
+    /// HIC 安装器装完后写标记（安装器负责解包，bridge 只记录版本/来源）。
+    public static Status markInstalled(String version, String source) throws IOException {
+        Files.createDirectories(NSumPaths.runtimeDir());
+        JsonObject marker = new JsonObject();
+        marker.addProperty("schema", 1);
+        marker.addProperty("version", version == null || version.isBlank() ? "unknown" : version);
+        marker.addProperty("installedAt", Instant.now().toString());
+        marker.addProperty("source", source == null ? "" : source);
+        Files.writeString(NSumPaths.runtimeMarker(), GSON.toJson(marker), StandardCharsets.UTF_8);
+        NSumConfig config = NSumConfig.load();
+        config.setLastRuntimeVersion(version == null ? "" : version);
+        config.save();
+        return status();
+    }
+
     /// 同步结果。
     public record SyncResult(boolean success, int exitCode, Path logFile, String message) {
     }

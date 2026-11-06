@@ -7,6 +7,7 @@
   "authors": ["HiBerNET"],
   "license": "LGPL-2.1-only",
   "environment": "client",
+  "mixins": ["mixins.nsum-bridge.json"],
   "entrypoints": {
     "main": [
       "com.hibernet.flfmod.nsum.bridge.NSumBridge"

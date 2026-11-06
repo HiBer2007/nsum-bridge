@@ -89,19 +89,34 @@ public final class NSumAutoInstaller {
         }
         var finalEntry = entry;
         CompletableFuture.runAsync(() -> {
+            NSumProgressPane pane = new NSumProgressPane("正在安装 NSUM Runtime " + version);
+            Platform.runLater(() -> Controllers.dialog(pane));
             try {
                 Path archive = download(finalEntry);
-                Path sourceDir = unpack(archive);
-                NSumRuntime.Status status = NSumRuntime.install(sourceDir, version);
-                Platform.runLater(() -> Controllers.dialog(
-                        (update ? "Runtime 已更新：" : "Runtime 已安装：") + status.dir(),
-                        "NSUM", MessageDialogPane.MessageType.SUCCESS));
+                String name = archive.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
+                if (name.endsWith(".exe")) {
+                    // HIC 安装器：CLI + JSON 进度，通过 pane 回显到 HMCL GUI；
+                    // 安装流程内快捷方式步骤 enabled:false，不会创建桌面/开始菜单项。
+                    pane.progress(0, "运行安装器…");
+                    NSumHicInstaller.Result result = NSumHicInstaller.install(
+                            archive, NSumPaths.runtimeDir(), pane);
+                    if (!result.success()) {
+                        throw new IOException(result.message());
+                    }
+                    NSumRuntime.markInstalled(version, "hic:" + archive.getFileName());
+                    pane.finish("Runtime 已安装到 " + NSumPaths.runtimeDir());
+                } else {
+                    Path sourceDir = unpack(archive);
+                    NSumRuntime.Status status = NSumRuntime.install(sourceDir, version);
+                    pane.finish("Runtime 已安装到 " + status.dir());
+                }
             } catch (Exception e) {
                 LOG.error("[NSUM] Runtime 安装失败", e);
+                pane.fail(e.getMessage());
                 Platform.runLater(() -> Controllers.dialog(
                         "安装失败：" + e.getMessage()
                                 + "\n\n可选办法：\n"
-                                + "1) 手动下载 Runtime 压缩包，放进 .hmcl/nsum/downloads/ 后点「从 downloads 安装」；\n"
+                                + "1) 手动下载 Runtime 安装包/压缩包，放进 .hmcl/nsum/downloads/ 后点「从 downloads 安装」；\n"
                                 + "2) 在 .hmcl/nsum/config.json 里设置 runtimeSourceDir（NSUM 部署目录）后点「安装 Runtime」。",
                         "NSUM", MessageDialogPane.MessageType.ERROR));
             }
