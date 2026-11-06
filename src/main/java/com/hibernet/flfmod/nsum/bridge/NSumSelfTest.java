@@ -218,6 +218,15 @@ public final class NSumSelfTest {
                 boolean ok = NSumE2E.run(Path.of(e2eZip), e2eTarget.isBlank() ? null : Path.of(e2eTarget));
                 passed += ok ? 1 : 0;
                 failed += ok ? 0 : 1;
+
+                String launchBase = System.getProperty("nsum.selftest.e2e.base", "");
+                if (!launchBase.isBlank()) {
+                    boolean launchOk = NSumE2E.runLaunchStrategy(Path.of(e2eZip), Path.of(launchBase));
+                    passed += launchOk ? 1 : 0;
+                    failed += launchOk ? 0 : 1;
+                } else {
+                    LOG.info("[NSUM-TEST] 启动策略: SKIP（未指定 nsum.selftest.e2e.base）");
+                }
             } else {
                 LOG.info("[NSUM-TEST] 端到端: SKIP（未指定 nsum.selftest.e2e.zip）");
             }

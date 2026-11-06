@@ -102,6 +102,67 @@ final class NSumE2E {
         }
     }
 
+    /// 启动策略测试：用真实版本目录 + 假 Launcher 验证「同步后再交回 HMCL 启动」。
+    ///
+    /// <p>不真正拉起 Minecraft 进程（那需要账号/显卡），但会真实执行
+    /// `NSumLaunchStrategy.launch()` 的同步分支并断言 hand-off 被调用一次。</p>
+    static boolean runLaunchStrategy(Path zip, Path baseVersionDir) {
+        int passed = 0;
+        int failed = 0;
+        try {
+            Path root = Files.createTempDirectory("nsum-launch");
+            JsonObject manifest = readManifest(zip);
+            String baseId = baseVersionDir.getFileName().toString();
+            var repository = new org.jackhuang.hmcl.game.DefaultGameRepository(root);
+            Path versionRoot = repository.getVersionRoot(baseId);
+            copyTree(baseVersionDir, versionRoot);
+
+            NSumInstance instance = new NSumInstance();
+            instance.name = NSumInstanceVisuals.decorateName(manifest.get("name").getAsString());
+            instance.repo = manifest.getAsJsonObject("instance").get("repo").getAsString();
+            instance.branch = manifest.getAsJsonObject("instance").get("branch").getAsString();
+            instance.gitBranch = manifest.getAsJsonObject("instance").get("gitBranch").getAsString();
+            instance.gameVersion = manifest.get("gameVersion").getAsString();
+            instance.modloader = manifest.get("modloader").getAsString();
+            instance.modloaderVersion = manifest.get("modloaderVersion").getAsString();
+            instance.installedGameVersion = instance.gameVersion;
+            instance.installedModloader = instance.modloader;
+            instance.installedLoaderVersion = instance.modloaderVersion;
+            instance.write(versionRoot);
+
+            // 仅需 Version#getId()：直接构造，避免 refreshVersions() 触发 HMCL RootPage
+            // 对 HMCLGameRepository 的强转（测试里用的是 DefaultGameRepository）。
+            var version = new org.jackhuang.hmcl.game.Version(baseId);
+            java.util.concurrent.atomic.AtomicBoolean handedOff = new java.util.concurrent.atomic.AtomicBoolean();
+            org.jackhuang.hmcl.launch.Launcher launcher =
+                    new org.jackhuang.hmcl.launch.Launcher(repository, version, null, null) {
+                        @Override
+                        public void makeLaunchScript(Path file) {
+                        }
+
+                        @Override
+                        public org.jackhuang.hmcl.util.platform.ManagedProcess launch() {
+                            handedOff.set(true);
+                            return null;
+                        }
+                    };
+            var context = new com.hibernet.flfmod.api.launch.LaunchContext(
+                    repository, version, null, null, launcher);
+
+            var strategy = new NSumLaunchStrategy();
+            boolean handles = strategy.handles(context);
+            var process = strategy.launch(context);
+            passed += check("启动策略 handles() 命中", handles, baseId);
+            passed += check("启动前同步后交回 HMCL 启动", handedOff.get() && process == null, "");
+            passed += check("启动同步应用 L1 mirror", hasText(versionRoot.resolve("config/full.json"), "repo"), "");
+            passed += check("启动同步应用 L1 mirror（覆盖）", hasText(versionRoot.resolve("config/full.json"), "repo"), "");
+            LOG.info("[NSUM-E2E] 启动策略结果: passed={} failed={}", passed, failed);
+            return failed == 0;
+        } catch (Throwable t) {
+            LOG.error("[NSUM-E2E] 启动策略异常", t);
+            return false;
+        }
+    }
     private static int check(String name, boolean ok, String detail) {
         LOG.info("[NSUM-E2E] {}{} {}", name, ok ? " PASS" : " FAIL", detail == null ? "" : detail);
         return ok ? 1 : 0;
