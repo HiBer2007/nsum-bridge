@@ -192,6 +192,23 @@ public final class NSumSelfTest {
                     LOG.warn("[NSUM-TEST] HMCL 下载异常: {}", t.toString());
                 }
             }
+            // 8. 实例外观：图标写入 + 名称后缀
+            boolean visualsOk = false;
+            try {
+                Path iconDir = temp.resolve("instance-visual");
+                Files.createDirectories(iconDir);
+                NSumInstanceVisuals.ensureIcon(iconDir);
+                boolean icon = Files.isRegularFile(iconDir.resolve("icon.png"));
+                String decorated = NSumInstanceVisuals.decorateName("Test Pack");
+                visualsOk = icon && decorated.endsWith(NSumInstanceVisuals.NAME_SUFFIX)
+                        && !decorated.endsWith(NSumInstanceVisuals.NAME_SUFFIX + NSumInstanceVisuals.NAME_SUFFIX);
+                LOG.info("[NSUM-TEST] 实例外观: {} (icon={}, name={})",
+                        visualsOk ? "PASS" : "FAIL", icon, decorated);
+            } catch (Throwable t) {
+                LOG.warn("[NSUM-TEST] 实例外观异常: {}", t.toString());
+            }
+            passed += visualsOk ? 1 : 0;
+            failed += visualsOk ? 0 : 1;
             LOG.info("[NSUM-TEST] 结果: passed={} failed={}", passed, failed);
         } catch (Throwable t) {
             LOG.error("[NSUM-TEST] 自检异常", t);

@@ -147,15 +147,18 @@ public final class NSumModpackProvider implements ModpackProvider {
         @Override
         public Task<?> getInstallTask(DefaultDependencyManager dependencyManager, Path zipFile,
                                       String name, String iconUrl) {
-            return Task.runAsync("NSUM: 安装整合包 " + name, () -> {
-                Path versionRoot = dependencyManager.getGameRepository().getVersionRoot(name);
+            // 实例名带「（NSUM）」后缀，便于在 HMCL 实例列表里区分
+            String displayName = NSumInstanceVisuals.decorateName(name);
+            return Task.runAsync("NSUM: 安装整合包 " + displayName, () -> {
+                Path versionRoot = dependencyManager.getGameRepository().getVersionRoot(displayName);
                 Files.createDirectories(versionRoot);
 
                 NSumInstance instance = this.instance != null ? this.instance : new NSumInstance();
                 if (instance.name == null || instance.name.isBlank()) {
-                    instance.name = name;
+                    instance.name = displayName;
                 }
                 instance.write(versionRoot);
+                NSumInstanceVisuals.ensureIcon(versionRoot);
 
                 // 游戏本体/库/加载器：复用 HMCL 安装器（会生成 <id>.json），再解 overrides / 同步内容
                 if (dependencyManager.getGameRepository()
@@ -163,11 +166,15 @@ public final class NSumModpackProvider implements ModpackProvider {
                     var repository = (org.jackhuang.hmcl.game.DefaultGameRepository)
                             dependencyManager.getGameRepository();
                     try {
-                        NSumGameInstaller.ensure(repository, name, instance);
+                        NSumGameInstaller.ensure(repository, displayName, instance);
                     } catch (Exception e) {
                         LOG.error("[NSUM] 安装游戏/加载器失败: {}", e.toString(), e);
                         throw e;
                     }
+                }
+                if (!Files.isRegularFile(versionRoot.resolve(displayName + ".json"))) {
+                    LOG.warn("[NSUM] 实例缺少版本描述 {}.json（游戏未安装完成？），HMCL 实例列表可能不显示该实例",
+                            displayName);
                 }
 
                 int extracted = extractOverrides(zipFile, versionRoot);

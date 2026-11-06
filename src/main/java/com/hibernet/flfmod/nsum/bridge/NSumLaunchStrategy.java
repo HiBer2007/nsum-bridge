@@ -61,6 +61,7 @@ public final class NSumLaunchStrategy implements LaunchStrategy {
         }
 
         NSumConfig config = NSumConfig.load();
+        NSumInstanceVisuals.ensureIcon(versionRoot);
 
         // 游戏/库/加载器：由 bridge 复用 HMCL 安装器安装；三元组（游戏版本/加载器/加载器版本）
         // 任一变化都会删除旧版本并重装，之后再同步内容。

@@ -48,7 +48,7 @@ public final class NSumUi {
                         FLFComponents.label("启动方式：nsum-runtime（启动前由 Runtime 同步实例）")))));
         api.registerPageButton("nsum", "home", "NSUM 管理", SVG.SETTINGS, "nsum-bridge:home");
 
-        api.registerSettingsSection(SettingsArea.LAUNCHER, "NSUM",
+        api.registerSettingsSection(SettingsArea.ABOUT, "NSUM",
                 FLFComponents.card(
                         FLFComponents.label("NSUM Runtime 安装在 .hmcl/nsum/runtime，由 NSUM 页面安装。"),
                         FLFComponents.label("启动 NSUM 实例时先同步仓库内容，同步失败默认中止启动。")));
