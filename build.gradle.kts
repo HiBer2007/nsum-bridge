@@ -6,16 +6,22 @@ group = "com.hibernet.flfhmcl"
 version = libs.versions.nsumBridge.get()
 
 // ---------------------------------------------------------------------------
-// 编译依赖：HMCL / Fabric / Mixin 取自 testbed/libraries（与运行时一致的固定集）；
-// FLF API 的四个模块取自工作区 mods/*/build/libs（先跑 .\gradlew.bat buildAll）。
+// 编译依赖：HMCL / Fabric / Mixin 取自 FLFHMCL 工作区的 testbed/libraries（与运行时
+// 一致的固定集）；FLF API 的四个模块取自该工作区 mods/*/build/libs（先跑 buildAll）。
 //
 // 覆盖方式（命令行 -P 参数）：
-//   -PflfLibrariesDir=<目录>   指定依赖目录，默认 testbed/libraries
-//   -PflfApiDir=<目录>         指定 FLF API jar 目录，默认 mods
+//   -PflfWorkspaceDir=<目录>   FLFHMCL 工作区根，默认 ../FLFHMCL 或环境变量 FLFHMCL_HOME
+//   -PflfLibrariesDir=<目录>   指定依赖目录，默认 <工作区>/testbed/libraries
+//   -PflfApiDir=<目录>         指定 FLF API jar 目录，默认 <工作区>/mods
 //   -PhmclVersion=<版本>       指定编译目标 HMCL，默认见 libs.versions.toml
 //   -PhmclJar=<jar 路径>       直接指定 HMCL jar
 // ---------------------------------------------------------------------------
-val workspaceRoot: File = projectDir.parentFile.parentFile
+val workspaceRoot: File = providers.gradleProperty("flfWorkspaceDir")
+    .map { file(it) }
+    .getOrElse(
+        System.getenv("FLFHMCL_HOME")?.let { file(it) }
+            ?: projectDir.parentFile.resolve("FLFHMCL")
+    )
 
 val hmclVersion: String = providers.gradleProperty("hmclVersion")
     .getOrElse(libs.versions.hmcl.get())

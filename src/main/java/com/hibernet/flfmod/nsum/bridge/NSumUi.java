@@ -123,14 +123,34 @@ public final class NSumUi {
             children.add(FLFComponents.label("还没有 NSUM 实例。导入 nsum 整合包，或把实例目录加入 NSUM 管理。"));
         } else {
             for (Path root : instances) {
-                NSumInstance.read(root).ifPresent(instance -> children.add(FLFComponents.label(
-                        root.getFileName() + "  →  " + instance.repo + " / " + instance.branch
-                                + (instance.lastSync.isBlank() ? "" : "（上次同步 " + instance.lastSync + "）"))));
+                NSumInstance.read(root).ifPresent(instance -> {
+                    children.add(FLFComponents.label(
+                            root.getFileName() + "  →  " + instance.repo + " / " + instance.branch
+                                    + (instance.lastSync.isBlank() ? "" : "（上次同步 " + instance.lastSync + "）")));
+                    children.add(FLFComponents.button(
+                            "同步 " + root.getFileName() + " 并生成版本描述",
+                            () -> syncOne(root, instance)));
+                });
             }
         }
 
         children.add(FLFComponents.button("同步全部实例", () -> syncAll(instances)));
         return FLFComponents.card(children.toArray(Node[]::new));
+    }
+
+    private static void syncOne(Path root, NSumInstance instance) {
+        CompletableFuture.runAsync(() -> {
+            NSumVersionDescriptor.ensure(root.getParent(), root,
+                    root.getFileName().toString(), instance);
+            NSumRuntime.SyncResult result = NSumRuntime.sync(instance, root);
+            Platform.runLater(() -> Controllers.dialog(
+                    result.success()
+                            ? "同步完成：" + root.getFileName()
+                            : "同步失败：" + result.message(),
+                    "NSUM", result.success()
+                            ? org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.SUCCESS
+                            : org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.ERROR));
+        });
     }
 
     private static void syncAll(List<Path> instances) {

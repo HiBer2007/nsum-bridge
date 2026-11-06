@@ -61,7 +61,18 @@ public final class NSumLaunchStrategy implements LaunchStrategy {
         }
 
         NSumConfig config = NSumConfig.load();
+
+        // HMCL 只认版本目录里的 <id>.json：启动前确保描述存在（幂等）
+        NSumVersionDescriptor.ensure(versionRoot.getParent(), versionRoot,
+                context.version().getId(), instance.get());
+
         NSumRuntime.SyncResult result = NSumRuntime.sync(instance.get(), versionRoot);
+
+        if (result.success()) {
+            // 同步可能带来新的 .NSUM/version.json，再确认一次描述（已存在则跳过）
+            NSumVersionDescriptor.ensure(versionRoot.getParent(), versionRoot,
+                    context.version().getId(), instance.get());
+        }
 
         if (!result.success()) {
             String message = "NSUM 同步失败: " + result.message()

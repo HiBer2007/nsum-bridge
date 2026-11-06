@@ -23,9 +23,10 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Optional;
 
-/// 实例级 NSUM 标记：`<实例目录>/.NSUM/instance.json`。
+/// 实例级 NSUM 标记：<实例目录>/.NSUM/instance.json。
 ///
-/// <p>存在该文件即代表「该实例由 NSUM 管理」：启动时走 `nsum-runtime` 策略，
+/// <p>存在该文件即代表「该实例由 NSUM 管理」：启动时走
+/// nsum-runtime 策略，
 /// 先让 Runtime 同步仓库内容再交给 HMCL 启动。</p>
 public final class NSumInstance {
 
@@ -41,6 +42,12 @@ public final class NSumInstance {
     public String gitBranch = "";
     /// 展示名。
     public String name = "NSUM";
+    /// 游戏版本（如 1.21.4），生成版本描述用。
+    public String gameVersion = "";
+    /// 加载器（fabric）。
+    public String modloader = "";
+    /// 加载器版本（如 0.16.10），生成版本描述用。
+    public String modloaderVersion = "";
     /// Runtime 最低版本要求（空 = 不限制）。
     public String minRuntimeVersion = "";
     /// 上次同步时间（ISO-8601，UTC）。
@@ -60,6 +67,9 @@ public final class NSumInstance {
             if (obj.has("branch")) instance.branch = obj.get("branch").getAsString();
             if (obj.has("gitBranch")) instance.gitBranch = obj.get("gitBranch").getAsString();
             if (obj.has("name")) instance.name = obj.get("name").getAsString();
+            if (obj.has("gameVersion")) instance.gameVersion = obj.get("gameVersion").getAsString();
+            if (obj.has("modloader")) instance.modloader = obj.get("modloader").getAsString();
+            if (obj.has("modloaderVersion")) instance.modloaderVersion = obj.get("modloaderVersion").getAsString();
             if (obj.has("minRuntimeVersion")) {
                 instance.minRuntimeVersion = obj.get("minRuntimeVersion").getAsString();
             }

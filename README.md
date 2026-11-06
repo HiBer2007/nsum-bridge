@@ -1,7 +1,7 @@
 # NSUM Bridge — HMCL ↔ NSUM 客户端桥接模组
 
 给 HMCL 增加 **NSUM 整合包类型**、**NSUM Runtime 启动方式**和 **NSUM 管理页面**。
-依赖 [FLFHMCL](../..)（把 Fabric 运行时挂到 HMCL 上）与 FLF API 的扩展点。
+依赖 [FLFHMCL](https://github.com/HiBer2007/FLFHMCL)（把 Fabric 运行时挂到 HMCL 上）与 FLF API 的扩展点。**本仓库独立**，不再是 FLFHMCL 的子目录；编译期依赖其工作区的 `testbed/libraries` 与 `mods/*/build/libs`。
 
 **开源协议：LGPL-2.1-only**
 
@@ -15,7 +15,10 @@
 
 - 导入 `*_nsum.zip`（NSUM 导出的整合包）→ 建实例 + 写 `.NSUM/instance.json`；
 - 启动 NSUM 实例时先让 **NSUM Runtime** 同步仓库内容，成功后再交回 HMCL 正常启动；
-- Runtime 由本模组自行安装到 `<HMCL>/.hmcl/nsum/runtime/`（自动下载后续再做）。
+- Runtime 由本模组自行安装到 `<HMCL>/.hmcl/nsum/runtime/`（自动下载后续再做）；
+- **版本描述 `<id>.json` 由本模组生成**（`NSumVersionDescriptor`）：优先继承已安装的 Fabric 版本并复制其 mainClass/arguments/libraries，缺失时写最小描述并告警；安装与每次启动前幂等补齐。
+
+**与 NSUM 的边界**：bridge 与 NSUM **只通过 CLI 通讯**（`exec build --format hmcl`），所有界面都是 HMCL 原生 JavaFX 自绘，不调用 NSUM 的 Qt GUI。
 
 ## 目录约定
 
@@ -39,7 +42,8 @@ cd K:\FLFHMCL
 .\gradlew.bat buildAll
 
 # 2. 构建本模组
-cd K:\FLFHMCL\extensions\nsum-bridge
+cd K:
+sum-bridge
 .\gradlew.bat build
 # 产物：build/libs/nsum-bridge-0.1.0.jar
 ```

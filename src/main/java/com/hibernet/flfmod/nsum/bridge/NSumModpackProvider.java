@@ -98,6 +98,9 @@ public final class NSumModpackProvider implements ModpackProvider {
         instance.repo = optString(instanceObj, "repo", "");
         instance.branch = optString(instanceObj, "branch", "base");
         instance.gitBranch = optString(instanceObj, "gitBranch", "");
+        instance.gameVersion = modpack.getGameVersion();
+        instance.modloader = optString(obj, "modloader", "fabric");
+        instance.modloaderVersion = optString(obj, "modloaderVersion", "");
         if (obj.has("runtime") && obj.get("runtime").isJsonObject()) {
             instance.minRuntimeVersion = optString(obj.getAsJsonObject("runtime"), "minVersion", "");
         }
@@ -152,6 +155,9 @@ public final class NSumModpackProvider implements ModpackProvider {
                 int extracted = extractOverrides(zipFile, versionRoot);
                 LOG.info("[NSUM] 实例已创建: {} (overrides={} 个文件, repo={})",
                         versionRoot, extracted, instance.repo);
+
+                // HMCL 只认 <id>.json：由 bridge 自己生成版本描述（继承已装 Fabric 版本）
+                NSumVersionDescriptor.ensure(versionRoot.getParent(), versionRoot, name, instance);
 
                 if (NSumRuntime.status().installed()) {
                     NSumRuntime.SyncResult result = NSumRuntime.sync(instance, versionRoot);
