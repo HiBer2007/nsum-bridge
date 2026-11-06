@@ -52,7 +52,6 @@ public final class NSumUi {
                 FLFComponents.card(
                         FLFComponents.label("NSUM Runtime 安装在 .hmcl/nsum/runtime，由 NSUM 页面安装。"),
                         FLFComponents.label("启动 NSUM 实例时先同步仓库内容，同步失败默认中止启动。")));
-
         LOG.info("[NSUM] GUI 注册完成：分类 nsum / 页面 nsum-bridge:home");
     }
 

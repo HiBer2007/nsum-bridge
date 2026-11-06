@@ -68,7 +68,11 @@ final class NSumHttp {
         }
         try {
             SSLContext.setDefault(context);
-            LOG.info("[NSUM] 已把系统证书库设为 JVM 默认 TLS 信任库");
+            // HttpsURLConnection 在类初始化时缓存默认 SSLSocketFactory（HMCL 的 FetchTask 走它），
+            // 仅 SSLContext.setDefault 不够，必须直接覆盖静态工厂。
+            javax.net.ssl.HttpsURLConnection.setDefaultSSLSocketFactory(context.getSocketFactory());
+            System.setProperty("javax.net.ssl.trustStoreType", "Windows-ROOT");
+            LOG.info("[NSUM] 已把系统证书库设为 JVM 默认 TLS 信任库（含 HttpsURLConnection）");
         } catch (Throwable t) {
             LOG.warn("[NSUM] 设置默认 TLS 信任库失败: {}", t.toString());
         }

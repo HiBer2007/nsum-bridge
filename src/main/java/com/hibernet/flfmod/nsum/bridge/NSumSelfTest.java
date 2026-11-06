@@ -163,6 +163,35 @@ public final class NSumSelfTest {
                 LOG.info("[NSUM-TEST] HIC CLI 安装: SKIP（未指定 nsum.selftest.cliDist）");
             }
 
+            // 7. 可选：HMCL FileDownloadTask 真实下载（-Dnsum.selftest.download=true）
+            if (Boolean.getBoolean("nsum.selftest.download")) {
+                try {
+                    var project = NSumMetadata.latest(NSumMetadata.TYPE_NSUM);
+                    var entry = project == null ? null : project.latestEntry();
+                    Path out = temp.resolve("download.zip");
+                    org.jackhuang.hmcl.task.Task<Void> download =
+                            new org.jackhuang.hmcl.task.FileDownloadTask(entry.downloadLink(), out)
+                                    .setName("selftest download");
+                    var executor = download.executor();
+                    java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+                    executor.addTaskListener(new org.jackhuang.hmcl.task.TaskListener() {
+                        @Override
+                        public void onStop(boolean success,
+                                           org.jackhuang.hmcl.task.TaskExecutor taskExecutor) {
+                            latch.countDown();
+                        }
+                    });
+                    executor.start();
+                    boolean done = latch.await(10, java.util.concurrent.TimeUnit.MINUTES);
+                    Throwable error = executor.getException();
+                    long size = Files.exists(out) ? Files.size(out) : -1;
+                    LOG.info("[NSUM-TEST] HMCL 下载: {} (done={}, size={}, expect={}, error={})",
+                            error == null && size > 10L * 1024 * 1024 ? "PASS" : "FAIL",
+                            done, size, ">10MB", error == null ? "-" : error.toString());
+                } catch (Throwable t) {
+                    LOG.warn("[NSUM-TEST] HMCL 下载异常: {}", t.toString());
+                }
+            }
             LOG.info("[NSUM-TEST] 结果: passed={} failed={}", passed, failed);
         } catch (Throwable t) {
             LOG.error("[NSUM-TEST] 自检异常", t);
