@@ -70,6 +70,7 @@ public final class NSumAutoInstaller {
                 ? "当前版本：" + NSumRuntime.status().version() + "\n最新版本：" + version + "\n\n是否现在更新？"
                 : "该功能需要 NSUM Runtime（NSUM 的 CLI 运行时）。\n最新版本：" + version + "\n\n是否现在下载并安装？";
         Controllers.confirm(text, title, MessageDialogPane.MessageType.QUESTION,
+                // 确认弹窗的按钮回调里不同步开新弹窗：HMCL 关闭当前弹窗时会连带关闭新弹窗（表现为崩溃）
                 () -> doInstall(project, version, update),
                 () -> LOG.info("[NSUM] 用户取消 {} Runtime", update ? "更新" : "安装"));
     }
@@ -88,9 +89,11 @@ public final class NSumAutoInstaller {
             return;
         }
         var finalEntry = entry;
+        // 面板须在 FX 线程创建；确认弹窗尚未关闭时不能用 dialog()（会在同一 JFXDialogPane 里叠加内容导致崩溃），
+        // 必须用 dialogLater() —— 它经 DialogUtils.showLater 排队，等当前弹窗关闭后再显示。
+        NSumProgressPane pane = new NSumProgressPane("正在安装 NSUM Runtime " + version);
+        Controllers.dialogLater(pane);
         CompletableFuture.runAsync(() -> {
-            NSumProgressPane pane = new NSumProgressPane("正在安装 NSUM Runtime " + version);
-            Platform.runLater(() -> Controllers.dialog(pane));
             try {
                 Path archive = download(finalEntry);
                 String name = archive.getFileName().toString().toLowerCase(java.util.Locale.ROOT);

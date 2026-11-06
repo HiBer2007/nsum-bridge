@@ -138,6 +138,31 @@ public final class NSumSelfTest {
             passed += installerOk ? 1 : 0;
             failed += installerOk ? 0 : 1;
 
+            // 6. HIC CLI 分发安装（需 -Dnsum.selftest.cliDist=<nsum_cli_dist>；否则 SKIP）
+            String cliDist = System.getProperty("nsum.selftest.cliDist", "");
+            if (!cliDist.isBlank()) {
+                boolean cliOk = false;
+                try {
+                    Path target = temp.resolve("runtime-cli");
+                    var result = NSumHicInstaller.installFromDist(
+                            Path.of(cliDist), target, (percent, detail) -> {
+                                if (percent % 25 == 0) {
+                                    LOG.info("[NSUM-TEST] [cli {}%] {}", percent, detail);
+                                }
+                            });
+                    cliOk = result.success()
+                            && Files.isRegularFile(target.resolve("NeoServerUpdateModpack.exe"));
+                    LOG.info("[NSUM-TEST] HIC CLI 安装: {} (exit={}, msg={})",
+                            cliOk ? "PASS" : "FAIL", result.exitCode(), result.message());
+                } catch (Throwable t) {
+                    LOG.warn("[NSUM-TEST] HIC CLI 安装异常: {}", t.toString());
+                }
+                passed += cliOk ? 1 : 0;
+                failed += cliOk ? 0 : 1;
+            } else {
+                LOG.info("[NSUM-TEST] HIC CLI 安装: SKIP（未指定 nsum.selftest.cliDist）");
+            }
+
             LOG.info("[NSUM-TEST] 结果: passed={} failed={}", passed, failed);
         } catch (Throwable t) {
             LOG.error("[NSUM-TEST] 自检异常", t);
