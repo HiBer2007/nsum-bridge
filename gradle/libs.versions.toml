@@ -1,0 +1,22 @@
+# nsum-bridge 独立版本目录（不依赖 FLFHMCL 工作区）
+[versions]
+nsumBridge   = "0.1.0"
+
+hmcl         = "3.16.4"
+fabricLoader = "0.19.3"
+spongeMixin  = "0.17.3+mixin.0.8.7"
+javafx       = "17.0.13"
+log4j        = "2.24.3"
+gson         = "2.10.1"
+
+# FLF API 编译期依赖的模块版本（与工作区 libs.versions.toml 对齐）
+flfApi        = "1.1"
+flfApiModpack = "0.1.0"
+flfApiLaunch  = "0.1.0"
+flfUiApi      = "2.2.0"
+
+[libraries]
+fabric-loader = { module = "net.fabricmc:fabric-loader", version.ref = "fabricLoader" }
+sponge-mixin  = { module = "net.fabricmc:sponge-mixin", version.ref = "spongeMixin" }
+log4j-api     = { module = "org.apache.logging.log4j:log4j-api", version.ref = "log4j" }
+gson          = { module = "com.google.code.gson:gson", version.ref = "gson" }

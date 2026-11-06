@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "nsum-bridge",
+  "version": "${version}",
+  "name": "NSUM Bridge",
+  "description": "Adds the NSUM modpack type, the NSUM Runtime launch strategy and an NSUM management page to HMCL",
+  "authors": ["HiBerNET"],
+  "license": "LGPL-2.1-only",
+  "environment": "client",
+  "entrypoints": {
+    "main": [
+      "com.hibernet.flfmod.nsum.bridge.NSumBridge"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "hmcl": ">=3.16",
+    "flf-api": ">=1.1",
+    "flf-api-modpack": ">=0.1.0",
+    "flf-api-launch": ">=0.1.0",
+    "flf-ui-api": ">=2.2.0"
+  }
+}
