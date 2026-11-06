@@ -62,8 +62,26 @@ public final class NSumLaunchStrategy implements LaunchStrategy {
 
         NSumConfig config = NSumConfig.load();
 
-        // TODO(installer): 启动前由 NSumGameInstaller 依 nsum.modpack.json 安装/切换
-        // 游戏版本与加载器（含加载器类型切换），见 PLAN 七点五 §6；当前先只做内容同步。
+        // 游戏/库/加载器：由 bridge 复用 HMCL 安装器安装；三元组（游戏版本/加载器/加载器版本）
+        // 任一变化都会删除旧版本并重装，之后再同步内容。
+        if (context.repository() instanceof org.jackhuang.hmcl.game.DefaultGameRepository) {
+            var repository = (org.jackhuang.hmcl.game.DefaultGameRepository) context.repository();
+            try {
+                boolean changed = NSumGameInstaller.ensure(
+                        repository, context.version().getId(), instance.get());
+                if (changed) {
+                    LOG.info("[NSUM] 已按 manifest 安装/切换游戏与加载器，准备重新同步内容");
+                }
+            } catch (Exception e) {
+                String message = "NSUM 安装/切换游戏或加载器失败: " + e.getMessage();
+                LOG.error("[NSUM] {}", message, e);
+                if (!config.isLaunchOnSyncFailure()) {
+                    throw new IllegalStateException(message, e);
+                }
+                LOG.warn("[NSUM] 配置允许失败后继续启动");
+            }
+        }
+
         NSumRuntime.SyncResult result = NSumRuntime.sync(instance.get(), versionRoot);
 
         if (result.success()) {

@@ -93,19 +93,50 @@ public final class NSumSelfTest {
             passed += syncOk ? 1 : 0;
             failed += syncOk ? 0 : 1;
 
-            // 4. 元数据拉取与版本比较（离线时标记 SKIP）
+            // 4. 元数据拉取（站点未部署/离线时 SKIP，不计失败）
             boolean metadataOk = false;
             try {
                 var project = NSumMetadata.latest(NSumMetadata.TYPE_NSUM);
                 metadataOk = project != null && project.latest() != null && !project.latest().isBlank();
                 LOG.info("[NSUM-TEST] 元数据(NSUM.latest={}): {}",
                         project == null ? "null" : project.latest(),
-                        metadataOk ? "PASS" : "FAIL");
+                        metadataOk ? "PASS" : "SKIP");
             } catch (Throwable t) {
                 LOG.info("[NSUM-TEST] 元数据: SKIP（{}）", t.toString());
             }
-            passed += metadataOk ? 1 : 0;
-            failed += metadataOk ? 0 : 1;
+            if (metadataOk) {
+                passed++;
+            }
+
+            // 5. 安装器三元组比对（不联网：仅验证检测逻辑）
+            boolean installerOk = false;
+            try {
+                Path base = Files.createTempDirectory("nsum-installer");
+                var repository = new org.jackhuang.hmcl.game.DefaultGameRepository(base);
+                Path versionRoot = repository.getVersionRoot("nsum-test");
+                Files.createDirectories(versionRoot);
+                Files.writeString(versionRoot.resolve("nsum-test.json"), "{\"id\":\"nsum-test\"}");
+
+                NSumInstance expected = new NSumInstance();
+                expected.gameVersion = "1.21.5";
+                expected.modloader = "fabric";
+                expected.modloaderVersion = "0.16.10";
+
+                // 无 installed* 记录 → 视为已就绪（unknown 状态）
+                boolean unknownReady = NSumGameInstaller.matches(repository, "nsum-test", expected);
+                // 记录为 1.21.4/forge → 与期望不一致 → 需要重装
+                expected.installedGameVersion = "1.21.4";
+                expected.installedModloader = "forge";
+                expected.installedLoaderVersion = "47.2.0";
+                boolean mismatch = NSumGameInstaller.matches(repository, "nsum-test", expected);
+                installerOk = unknownReady && !mismatch;
+                LOG.info("[NSUM-TEST] 安装器三元组比对: {} (unknownReady={}, mismatchDetected={})",
+                        installerOk ? "PASS" : "FAIL", unknownReady, !mismatch);
+            } catch (Throwable t) {
+                LOG.warn("[NSUM-TEST] 安装器比对异常: {}", t.toString());
+            }
+            passed += installerOk ? 1 : 0;
+            failed += installerOk ? 0 : 1;
 
             LOG.info("[NSUM-TEST] 结果: passed={} failed={}", passed, failed);
         } catch (Throwable t) {

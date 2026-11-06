@@ -71,6 +71,7 @@ public final class NSumUi {
 
         children.add(FLFComponents.button("安装 / 更新 Runtime", () -> installRuntime(config)));
         children.add(FLFComponents.button("从元数据下载 Runtime", NSumUi::installFromMetadata));
+        children.add(FLFComponents.button("从 downloads 安装", NSumAutoInstaller::installFromDownloads));
         return FLFComponents.card(children.toArray(Node[]::new));
     }
 

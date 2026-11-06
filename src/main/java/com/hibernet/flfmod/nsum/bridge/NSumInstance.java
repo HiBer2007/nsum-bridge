@@ -42,12 +42,18 @@ public final class NSumInstance {
     public String gitBranch = "";
     /// 展示名。
     public String name = "NSUM";
-    /// 游戏版本（如 1.21.4），生成版本描述用。
+    /// 游戏版本（如 1.21.4），安装与版本比对用。
     public String gameVersion = "";
-    /// 加载器（fabric）。
+    /// 加载器（fabric / quilt / forge / neoforge / …）。
     public String modloader = "";
-    /// 加载器版本（如 0.16.10），生成版本描述用。
+    /// 加载器版本（如 0.16.10）。
     public String modloaderVersion = "";
+    /// 已安装的游戏版本（由安装器写入，用于检测变化后自动切换）。
+    public String installedGameVersion = "";
+    /// 已安装的加载器类型。
+    public String installedModloader = "";
+    /// 已安装的加载器版本。
+    public String installedLoaderVersion = "";
     /// Runtime 最低版本要求（空 = 不限制）。
     public String minRuntimeVersion = "";
     /// 上次同步时间（ISO-8601，UTC）。
@@ -70,6 +76,9 @@ public final class NSumInstance {
             if (obj.has("gameVersion")) instance.gameVersion = obj.get("gameVersion").getAsString();
             if (obj.has("modloader")) instance.modloader = obj.get("modloader").getAsString();
             if (obj.has("modloaderVersion")) instance.modloaderVersion = obj.get("modloaderVersion").getAsString();
+            if (obj.has("installedGameVersion")) instance.installedGameVersion = obj.get("installedGameVersion").getAsString();
+            if (obj.has("installedModloader")) instance.installedModloader = obj.get("installedModloader").getAsString();
+            if (obj.has("installedLoaderVersion")) instance.installedLoaderVersion = obj.get("installedLoaderVersion").getAsString();
             if (obj.has("minRuntimeVersion")) {
                 instance.minRuntimeVersion = obj.get("minRuntimeVersion").getAsString();
             }

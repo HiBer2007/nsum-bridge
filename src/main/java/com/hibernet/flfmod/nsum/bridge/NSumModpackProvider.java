@@ -152,6 +152,19 @@ public final class NSumModpackProvider implements ModpackProvider {
                 }
                 instance.write(versionRoot);
 
+                // 游戏本体/库/加载器：复用 HMCL 安装器（会生成 <id>.json），再解 overrides / 同步内容
+                if (dependencyManager.getGameRepository()
+                        instanceof org.jackhuang.hmcl.game.DefaultGameRepository) {
+                    var repository = (org.jackhuang.hmcl.game.DefaultGameRepository)
+                            dependencyManager.getGameRepository();
+                    try {
+                        NSumGameInstaller.ensure(repository, name, instance);
+                    } catch (Exception e) {
+                        LOG.error("[NSUM] 安装游戏/加载器失败: {}", e.toString(), e);
+                        throw e;
+                    }
+                }
+
                 int extracted = extractOverrides(zipFile, versionRoot);
                 LOG.info("[NSUM] 实例已创建: {} (overrides={} 个文件, repo={})",
                         versionRoot, extracted, instance.repo);

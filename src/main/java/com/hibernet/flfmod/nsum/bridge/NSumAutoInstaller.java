@@ -99,11 +99,58 @@ public final class NSumAutoInstaller {
             } catch (Exception e) {
                 LOG.error("[NSUM] Runtime 安装失败", e);
                 Platform.runLater(() -> Controllers.dialog(
-                        "安装失败：" + e.getMessage() + "\n\n可改用本地部署目录：在 .hmcl/nsum/config.json "
-                                + "里设置 runtimeSourceDir 后点「安装 Runtime」。",
+                        "安装失败：" + e.getMessage()
+                                + "\n\n可选办法：\n"
+                                + "1) 手动下载 Runtime 压缩包，放进 .hmcl/nsum/downloads/ 后点「从 downloads 安装」；\n"
+                                + "2) 在 .hmcl/nsum/config.json 里设置 runtimeSourceDir（NSUM 部署目录）后点「安装 Runtime」。",
                         "NSUM", MessageDialogPane.MessageType.ERROR));
             }
         });
+    }
+
+    /// 从 `.hmcl/nsum/downloads/` 里最新的压缩包/可执行文件安装（离线/网络失败兜底）。
+    public static void installFromDownloads() {
+        CompletableFuture.runAsync(() -> {
+            Path dir = NSumPaths.nsumDir().resolve("downloads");
+            Path archive = newestArchive(dir);
+            if (archive == null) {
+                Platform.runLater(() -> Controllers.dialog(
+                        "在 " + dir + " 里没有找到 .zip / .exe。\n"
+                                + "请把 NSUM Runtime 发布包放到该目录后重试。",
+                        "NSUM", MessageDialogPane.MessageType.WARNING));
+                return;
+            }
+            try {
+                Path sourceDir = unpack(archive);
+                NSumRuntime.Status status = NSumRuntime.install(sourceDir, "local:" + archive.getFileName());
+                Platform.runLater(() -> Controllers.dialog(
+                        "已从本地压缩包安装：" + archive.getFileName() + "\n目录：" + status.dir(),
+                        "NSUM", MessageDialogPane.MessageType.SUCCESS));
+            } catch (Exception e) {
+                LOG.error("[NSUM] 本地压缩包安装失败", e);
+                Platform.runLater(() -> Controllers.dialog(
+                        "安装失败：" + e.getMessage(),
+                        "NSUM", MessageDialogPane.MessageType.ERROR));
+            }
+        });
+    }
+
+    private static Path newestArchive(Path dir) {
+        if (!Files.isDirectory(dir)) {
+            return null;
+        }
+        try (var stream = Files.list(dir)) {
+            return stream.filter(Files::isRegularFile)
+                    .filter(p -> {
+                        String name = p.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
+                        return name.endsWith(".zip") || name.endsWith(".exe");
+                    })
+                    .max(java.util.Comparator.comparingLong(p -> p.toFile().lastModified()))
+                    .orElse(null);
+        } catch (IOException e) {
+            LOG.warn("[NSUM] 扫描 downloads 失败: {}", e.toString());
+            return null;
+        }
     }
 
     private static Path download(NSumMetadata.Entry entry) throws IOException, InterruptedException {
