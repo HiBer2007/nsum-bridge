@@ -43,6 +43,7 @@ public final class NSumBridge implements ModInitializer {
             LOG.info("[NSUM] 尚未配置 Runtime 源目录（.hmcl/nsum/config.json → runtimeSourceDir）");
         }
 
+        NSumHttp.installAsDefault();
         NSumUi.register();
         NSumAutoInstaller.checkOnStartup();
         NSumSelfTest.runIfRequested();

@@ -15,6 +15,9 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane;
+import org.jackhuang.hmcl.task.FileDownloadTask;
+import org.jackhuang.hmcl.task.Task;
+import org.jackhuang.hmcl.util.TaskCancellationAction;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -88,72 +91,60 @@ public final class NSumAutoInstaller {
                     MessageDialogPane.MessageType.ERROR);
             return;
         }
-        var finalEntry = entry;
-        // 面板须在 FX 线程创建；确认弹窗尚未关闭时不能用 dialog()（会在同一 JFXDialogPane 里叠加内容导致崩溃），
-        // 必须用 dialogLater() —— 它经 DialogUtils.showLater 排队，等当前弹窗关闭后再显示。
-        NSumProgressPane pane = new NSumProgressPane("正在安装 NSUM Runtime " + version);
-        Controllers.dialogLater(pane);
-        CompletableFuture.runAsync(() -> {
-            try {
-                Path archive = download(finalEntry);
-                String name = archive.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
-                Path cliDir = null;
-                if (name.endsWith(".zip")) {
-                    Path root = unpackRoot(archive);
-                    cliDir = findFileNear(root, "hci_cli.exe");
-                    if (cliDir == null) {
-                        cliDir = null;
-                    }
-                }
-                if (cliDir != null) {
-                    // HIC CLI 分发目录：--cli --json --silent，进度回显到 HMCL，
-                    // install.json 内快捷方式 enabled:false（不建桌面/开始菜单项）。
-                    pane.progress(0, "运行 HIC CLI 安装器…");
-                    NSumHicInstaller.Result result = NSumHicInstaller.installFromDist(
-                            cliDir, NSumPaths.runtimeDir(), pane);
-                    if (!result.success()) {
-                        throw new IOException(result.message());
-                    }
-                    NSumRuntime.markInstalled(version, "hic-cli:" + archive.getFileName());
-                    pane.finish("Runtime 已安装到 " + NSumPaths.runtimeDir());
-                } else {
-                    Path sourceDir = unpack(archive);
-                    NSumRuntime.Status status = NSumRuntime.install(sourceDir, version);
-                    pane.finish("Runtime 已安装到 " + status.dir());
-                }
-            } catch (Exception e) {
-                LOG.error("[NSUM] Runtime 安装失败", e);
-                pane.fail(e.getMessage());
-                String message = String.valueOf(e.getMessage());
-                boolean sslFailure = message.contains("PKIX")
-                        || message.contains("certificate")
-                        || message.contains("SSLHandshake")
-                        || message.contains("CertPath");
-                Platform.runLater(() -> {
-                    if (sslFailure) {
-                        Controllers.confirm(
-                                "下载时证书校验失败：\n" + message
-                                        + "\n\n是否跳过证书校验重试？（仅本次进程有效，连接仍为 HTTPS）",
-                                "NSUM", MessageDialogPane.MessageType.WARNING,
-                                () -> {
-                                    LOG.warn("[NSUM] 用户同意跳过证书校验重试下载");
-                                    System.setProperty("nsum.insecureTls", "true");
-                                    doInstall(project, version, update);
-                                },
-                                () -> LOG.info("[NSUM] 用户取消不安全重试"));
-                        return;
-                    }
-                    Controllers.dialog(
-                            "安装失败：" + message
-                                    + "\n\n可选办法：\n"
-                                    + "1) 手动下载 Runtime 安装包/压缩包，放进 .hmcl/nsum/downloads/ 后点「从 downloads 安装」；\n"
-                                    + "2) 在 .hmcl/nsum/config.json 里设置 runtimeSourceDir（NSUM 部署目录）后点「安装 Runtime」。",
-                            "NSUM", MessageDialogPane.MessageType.ERROR);
-                });
-            }
-        });
+
+        String link = entry.downloadLink();
+        String fileName = link.substring(link.lastIndexOf('/') + 1);
+        if (fileName.isBlank()) {
+            fileName = "nsum-runtime-" + version + ".zip";
+        }
+        Path zip = NSumPaths.nsumDir().resolve("downloads").resolve(fileName);
+        try {
+            Files.createDirectories(zip.getParent());
+        } catch (IOException e) {
+            Controllers.dialog("无法创建下载目录：" + e.getMessage(), "NSUM",
+                    MessageDialogPane.MessageType.ERROR);
+            return;
+        }
+
+        // 复用 HMCL 内置下载器（FileDownloadTask：[FetchTask]，带重试/多镜像/速度统计）
+        // 与任务对话框（TaskExecutorDialogPane：进度条、任务列表、取消按钮均由 HMCL 提供）。
+        Task<Void> download = new FileDownloadTask(link, zip)
+                .setName("下载 NSUM Runtime " + version);
+        Task<Void> install = installTask(zip, version);
+        Task<Void> task = download.thenComposeAsync(install);
+        Controllers.taskDialog(task, (update ? "更新" : "安装") + " NSUM Runtime " + version,
+                TaskCancellationAction.NORMAL);
     }
 
+    /// 安装任务：把下载好的 zip 交给 HIC CLI 安装器，HIC 的 progress 事件映射到任务进度。
+    private static Task<Void> installTask(Path zip, String version) {
+        return new Task<Void>() {
+            @Override
+            public void execute() throws Exception {
+                setStage("解压 NSUM Runtime");
+                Path root = unpackRoot(zip);
+                Path dist = findFileNear(root, "hci_cli.exe");
+                if (dist == null) {
+                    setStage("释放运行时文件");
+                    Path sourceDir = unpack(zip);
+                    NSumRuntime.install(sourceDir, version);
+                    return;
+                }
+                setStage("运行 HIC CLI 安装器");
+                NSumHicInstaller.Result result = NSumHicInstaller.installFromDist(
+                        dist, NSumPaths.runtimeDir(), (percent, detail) -> {
+                            updateProgress(percent / 100.0);
+                            if (detail != null && !detail.isBlank()) {
+                                setStage(detail);
+                            }
+                        });
+                if (!result.success()) {
+                    throw new IOException(result.message());
+                }
+                NSumRuntime.markInstalled(version, "hic-cli:" + zip.getFileName());
+            }
+        }.setName("安装 NSUM Runtime");
+    }
     /// 从 `.hmcl/nsum/downloads/` 里最新的压缩包/可执行文件安装（离线/网络失败兜底）。
     public static void installFromDownloads() {
         CompletableFuture.runAsync(() -> {

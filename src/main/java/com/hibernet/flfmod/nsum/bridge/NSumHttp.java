@@ -59,6 +59,20 @@ final class NSumHttp {
         return builder.build();
     }
 
+    /// 把系统证书库设为 JVM 全局默认（HMCL 的 FileDownloadTask 走 HttpURLConnection，
+    /// 使用默认 SSLContext；不设则仍用 JDK cacerts，GitHub 等站点会 PKIX）。
+    static void installAsDefault() {
+        SSLContext context = systemContext();
+        if (context == null) {
+            return;
+        }
+        try {
+            SSLContext.setDefault(context);
+            LOG.info("[NSUM] 已把系统证书库设为 JVM 默认 TLS 信任库");
+        } catch (Throwable t) {
+            LOG.warn("[NSUM] 设置默认 TLS 信任库失败: {}", t.toString());
+        }
+    }
     /// 系统证书库（Windows-ROOT）上下文；失败返回 null（用 JDK 默认）。
     private static SSLContext systemContext() {
         if ("false".equalsIgnoreCase(System.getProperty("nsum.useSystemTrustStore", "true"))) {
