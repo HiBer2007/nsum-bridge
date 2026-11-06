@@ -42,7 +42,8 @@ public final class NSumModpackProvider implements ModpackProvider {
 
     public static final NSumModpackProvider INSTANCE = new NSumModpackProvider();
     public static final String TYPE = "nsum";
-    public static final String MANIFEST_NAME = "nsum.modpack.json";
+    public static final String MANIFEST_NAME = "nsum.index.json";
+    public static final String LEGACY_MANIFEST_NAME = "nsum.modpack.json";
 
     private static final Logger LOG = LogManager.getLogger(NSumModpackProvider.class);
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -76,7 +77,11 @@ public final class NSumModpackProvider implements ModpackProvider {
         try {
             json = CompressingUtils.readTextZipEntry(zipFile, MANIFEST_NAME);
         } catch (IOException e) {
-            return null; // 不是 nsum 包，交给其它 provider
+            try {
+                json = CompressingUtils.readTextZipEntry(zipFile, LEGACY_MANIFEST_NAME);
+            } catch (IOException ignored) {
+                return null; // 不是 nsum 包，交给其它 provider
+            }
         }
         JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
 
