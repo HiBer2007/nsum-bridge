@@ -17,6 +17,8 @@ import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane;
 import org.jackhuang.hmcl.task.FileDownloadTask;
 import org.jackhuang.hmcl.task.Task;
+import org.jackhuang.hmcl.task.TaskExecutor;
+import org.jackhuang.hmcl.task.TaskListener;
 import org.jackhuang.hmcl.util.TaskCancellationAction;
 
 import java.io.IOException;
@@ -108,12 +110,44 @@ public final class NSumAutoInstaller {
 
         // 复用 HMCL 内置下载器（FileDownloadTask：[FetchTask]，带重试/多镜像/速度统计）
         // 与任务对话框（TaskExecutorDialogPane：进度条、任务列表、取消按钮均由 HMCL 提供）。
-        Task<Void> download = new FileDownloadTask(link, zip)
-                .setName("下载 NSUM Runtime " + version);
+        // 元数据给了 sha256 时启用 HMCL 的完整性校验，避免残缺 zip 被当成成功。
+        // 旧的不完整残留先删掉（否则 HMCL 会续传/校验失败，错误信息也更难懂）。
+        try {
+            if (Files.exists(zip) && !entry.sha256().isBlank() && !entry.sha256().isBlank()) {
+                Files.deleteIfExists(zip);
+            }
+        } catch (IOException e) {
+            LOG.debug("[NSUM] 删除旧下载失败: {}", e.toString());
+        }
+        Task<Void> download = entry.sha256().isBlank()
+                ? new FileDownloadTask(link, zip).setName("下载 NSUM Runtime " + version)
+                : new FileDownloadTask(link, zip,
+                        FileDownloadTask.IntegrityCheck.of("SHA-256", entry.sha256()))
+                        .setName("下载 NSUM Runtime " + version);
         Task<Void> install = installTask(zip, version);
         Task<Void> task = download.thenComposeAsync(install);
-        Controllers.taskDialog(task, (update ? "更新" : "安装") + " NSUM Runtime " + version,
+
+        TaskExecutor executor = task.executor();
+        Controllers.taskDialog(executor, (update ? "更新" : "安装") + " NSUM Runtime " + version,
                 TaskCancellationAction.NORMAL);
+        executor.addTaskListener(new TaskListener() {
+            @Override
+            public void onStop(boolean success, TaskExecutor taskExecutor) {
+                if (success) {
+                    return;
+                }
+                Throwable error = taskExecutor.getException();
+                String message = error == null ? "未知错误"
+                        : (error.getMessage() == null ? error.toString() : error.getMessage());
+                LOG.error("[NSUM] Runtime 安装任务失败: {}", message, error);
+                Platform.runLater(() -> Controllers.dialogLater(new MessageDialogPane.Builder(
+                        "安装 NSUM Runtime 失败：\n" + message
+                                + "\n\n下载文件：" + zip
+                                + "\n可删除该文件后重试；或手动下载放到 .hmcl/nsum/downloads/ 后点「从 downloads 安装」。",
+                        "NSUM", MessageDialogPane.MessageType.ERROR).ok(null).build()));
+            }
+        });
+        executor.start();
     }
 
     /// 安装任务：把下载好的 zip 交给 HIC CLI 安装器，HIC 的 progress 事件映射到任务进度。
