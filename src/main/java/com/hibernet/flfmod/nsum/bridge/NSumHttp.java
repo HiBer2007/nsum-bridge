@@ -14,17 +14,23 @@ import org.apache.logging.log4j.Logger;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
 import java.net.http.HttpClient;
+import java.security.KeyStore;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 
 /// HTTP 客户端工厂。
 ///
-/// <p>部分环境（离线吊销检查 / 自签中间证书）会让 JVM 报
-/// `PKIX path building failed`。默认保持严格校验；排障时可加
-/// `-Dnsum.insecureTls=true` 关闭校验（**仅用于本地排障**，日志会告警）。</p>
+/// <p>**信任库策略**：默认使用**系统证书库**（Windows 上为 `Windows-ROOT`），
+/// 因为本机/企业环境常把根 CA 装在系统库而非 JDK 自带 `cacerts`；JDK `cacerts`
+/// 缺失该 CA 时会报 `PKIX path building failed`（GitHub 等站点即此症状）。
+/// 系统库不可用时回退 JDK 默认。</p>
+///
+/// <p>排障开关：`-Dnsum.insecureTls=true` 完全跳过校验（仅本地排障）；
+/// `-Dnsum.useSystemTrustStore=false` 关闭系统库、强制 JDK 默认。</p>
 final class NSumHttp {
 
     private static final Logger LOG = LogManager.getLogger(NSumHttp.class);
@@ -36,6 +42,7 @@ final class NSumHttp {
         HttpClient.Builder builder = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(15))
                 .followRedirects(HttpClient.Redirect.NORMAL);
+
         if (Boolean.getBoolean("nsum.insecureTls")) {
             try {
                 builder.sslContext(insecureContext());
@@ -43,8 +50,34 @@ final class NSumHttp {
             } catch (Exception e) {
                 LOG.warn("[NSUM] 建 TLS 上下文失败，回退严格校验: {}", e.toString());
             }
+        } else {
+            SSLContext system = systemContext();
+            if (system != null) {
+                builder.sslContext(system);
+            }
         }
         return builder.build();
+    }
+
+    /// 系统证书库（Windows-ROOT）上下文；失败返回 null（用 JDK 默认）。
+    private static SSLContext systemContext() {
+        if ("false".equalsIgnoreCase(System.getProperty("nsum.useSystemTrustStore", "true"))) {
+            return null;
+        }
+        try {
+            KeyStore keyStore = KeyStore.getInstance("Windows-ROOT");
+            keyStore.load(null, null);
+            TrustManagerFactory factory = TrustManagerFactory.getInstance(
+                    TrustManagerFactory.getDefaultAlgorithm());
+            factory.init(keyStore);
+            SSLContext context = SSLContext.getInstance("TLS");
+            context.init(null, factory.getTrustManagers(), null);
+            LOG.debug("[NSUM] TLS 使用系统证书库 (Windows-ROOT)");
+            return context;
+        } catch (Throwable t) {
+            LOG.debug("[NSUM] 系统证书库不可用，回退 JDK 默认: {}", t.toString());
+            return null;
+        }
     }
 
     private static SSLContext insecureContext() throws Exception {
