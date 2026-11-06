@@ -44,6 +44,7 @@ public final class NSumBridge implements ModInitializer {
         }
 
         NSumUi.register();
+        NSumAutoInstaller.checkOnStartup();
         NSumSelfTest.runIfRequested();
     }
 }

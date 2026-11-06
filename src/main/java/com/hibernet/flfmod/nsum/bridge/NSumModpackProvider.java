@@ -156,8 +156,8 @@ public final class NSumModpackProvider implements ModpackProvider {
                 LOG.info("[NSUM] 实例已创建: {} (overrides={} 个文件, repo={})",
                         versionRoot, extracted, instance.repo);
 
-                // HMCL 只认 <id>.json：由 bridge 自己生成版本描述（继承已装 Fabric 版本）
-                NSumVersionDescriptor.ensure(versionRoot.getParent(), versionRoot, name, instance);
+                // TODO(installer): 由 NSumGameInstaller 依 manifest 安装原版 + 加载器（含类型切换），
+                // 见 PLAN 七点五 §6；当前只建目录/写标记/解 overrides 并同步内容。
 
                 if (NSumRuntime.status().installed()) {
                     NSumRuntime.SyncResult result = NSumRuntime.sync(instance, versionRoot);

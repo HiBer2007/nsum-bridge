@@ -62,16 +62,12 @@ public final class NSumLaunchStrategy implements LaunchStrategy {
 
         NSumConfig config = NSumConfig.load();
 
-        // HMCL 只认版本目录里的 <id>.json：启动前确保描述存在（幂等）
-        NSumVersionDescriptor.ensure(versionRoot.getParent(), versionRoot,
-                context.version().getId(), instance.get());
-
+        // TODO(installer): 启动前由 NSumGameInstaller 依 nsum.modpack.json 安装/切换
+        // 游戏版本与加载器（含加载器类型切换），见 PLAN 七点五 §6；当前先只做内容同步。
         NSumRuntime.SyncResult result = NSumRuntime.sync(instance.get(), versionRoot);
 
         if (result.success()) {
-            // 同步可能带来新的 .NSUM/version.json，再确认一次描述（已存在则跳过）
-            NSumVersionDescriptor.ensure(versionRoot.getParent(), versionRoot,
-                    context.version().getId(), instance.get());
+            LOG.debug("[NSUM] 同步完成，内容已更新");
         }
 
         if (!result.success()) {

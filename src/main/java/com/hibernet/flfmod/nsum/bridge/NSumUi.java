@@ -70,7 +70,25 @@ public final class NSumUi {
                 + (config.getRuntimeSourceDir().isBlank() ? "（未配置）" : config.getRuntimeSourceDir())));
 
         children.add(FLFComponents.button("安装 / 更新 Runtime", () -> installRuntime(config)));
+        children.add(FLFComponents.button("从元数据下载 Runtime", NSumUi::installFromMetadata));
         return FLFComponents.card(children.toArray(Node[]::new));
+    }
+
+    private static void installFromMetadata() {
+        CompletableFuture.runAsync(() -> {
+            try {
+                var project = NSumMetadata.latest(NSumMetadata.TYPE_NSUM);
+                if (project == null || project.latest().isBlank()) {
+                    Platform.runLater(() -> Controllers.dialog("无法获取 NSUM 元数据，请检查网络或 metadata.hibernet.top",
+                            "NSUM", org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.ERROR));
+                    return;
+                }
+                Platform.runLater(() -> NSumAutoInstaller.promptInstall(project, project.latest(),
+                        NSumRuntime.status().installed()));
+            } catch (Throwable t) {
+                LOG.warn("[NSUM] 获取元数据失败: {}", t.toString());
+            }
+        });
     }
 
     private static void installRuntime(NSumConfig config) {
@@ -140,8 +158,6 @@ public final class NSumUi {
 
     private static void syncOne(Path root, NSumInstance instance) {
         CompletableFuture.runAsync(() -> {
-            NSumVersionDescriptor.ensure(root.getParent(), root,
-                    root.getFileName().toString(), instance);
             NSumRuntime.SyncResult result = NSumRuntime.sync(instance, root);
             Platform.runLater(() -> Controllers.dialog(
                     result.success()

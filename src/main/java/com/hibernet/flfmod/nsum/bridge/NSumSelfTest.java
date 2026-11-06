@@ -93,34 +93,19 @@ public final class NSumSelfTest {
             passed += syncOk ? 1 : 0;
             failed += syncOk ? 0 : 1;
 
-            // 4. 版本描述生成（伪造一个已安装的 Fabric 版本作为继承基）
-            boolean descriptorOk = false;
+            // 4. 元数据拉取与版本比较（离线时标记 SKIP）
+            boolean metadataOk = false;
             try {
-                Path versionsRoot = temp.resolve("versions");
-                Path baseDir = versionsRoot.resolve("fabric-loader-0.16.10-1.21.4");
-                Files.createDirectories(baseDir);
-                String baseJson = "{\"id\":\"fabric-loader-0.16.10-1.21.4\","
-                        + "\"inheritsFrom\":\"1.21.4\","
-                        + "\"mainClass\":\"net.fabricmc.loader.impl.launch.knot.KnotClient\","
-                        + "\"libraries\":[{\"name\":\"net.fabricmc:fabric-loader:0.16.10\"}]}";
-                Files.writeString(baseDir.resolve("fabric-loader-0.16.10-1.21.4.json"), baseJson);
-
-                Path instDir = versionsRoot.resolve("nsum-selftest-inst");
-                Files.createDirectories(instDir);
-                NSumInstance descriptorInstance = new NSumInstance();
-                descriptorInstance.name = "nsum-selftest-inst";
-                descriptorInstance.gameVersion = "1.21.4";
-                descriptorInstance.modloaderVersion = "0.16.10";
-                descriptorOk = NSumVersionDescriptor.ensure(
-                        versionsRoot, instDir, descriptorInstance.name, descriptorInstance)
-                        && Files.isRegularFile(instDir.resolve(descriptorInstance.name + ".json"));
-                LOG.info("[NSUM-TEST] 版本描述生成: {} ({})",
-                        descriptorOk ? "PASS" : "FAIL", instDir.resolve(descriptorInstance.name + ".json"));
+                var project = NSumMetadata.latest(NSumMetadata.TYPE_NSUM);
+                metadataOk = project != null && project.latest() != null && !project.latest().isBlank();
+                LOG.info("[NSUM-TEST] 元数据(NSUM.latest={}): {}",
+                        project == null ? "null" : project.latest(),
+                        metadataOk ? "PASS" : "FAIL");
             } catch (Throwable t) {
-                LOG.warn("[NSUM-TEST] 版本描述生成异常: {}", t.toString());
+                LOG.info("[NSUM-TEST] 元数据: SKIP（{}）", t.toString());
             }
-            passed += descriptorOk ? 1 : 0;
-            failed += descriptorOk ? 0 : 1;
+            passed += metadataOk ? 1 : 0;
+            failed += metadataOk ? 0 : 1;
 
             LOG.info("[NSUM-TEST] 结果: passed={} failed={}", passed, failed);
         } catch (Throwable t) {
