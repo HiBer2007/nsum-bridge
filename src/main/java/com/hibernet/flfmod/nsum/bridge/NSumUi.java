@@ -41,6 +41,7 @@ public final class NSumUi {
 
         api.registerCategory("nsum", "NSUM");
         api.registerPage("nsum-bridge:home", () -> new FLFPage("NSUM", FLFComponents.column(
+                bridgeCard(),
                 runtimeCard(),
                 instancesCard(),
                 FLFComponents.card(

@@ -44,14 +44,26 @@ public final class NSumBridgeUpdater {
     public record UpdateInfo(String version, String downloadLink, String sha256, String releasePage) {
     }
 
-    /// 当前 jar 版本（读 `fabric.mod.json` 的 version 字段；构建时已展开）。
+    /// 当前 jar 版本：直接从本 mod 的 jar 里读 `fabric.mod.json`。
+    ///
+    /// <p>不能用 `getResourceAsStream("/fabric.mod.json")`：多个 mod 在同一 classpath 时
+    /// 拿到的是别人的 `fabric.mod.json`（实测读到 flf-api 的 1.2.0-hmcl3.16）。</p>
     public static String currentVersion() {
-        try (InputStream in = NSumBridgeUpdater.class.getResourceAsStream("/fabric.mod.json")) {
-            if (in != null) {
-                JsonObject obj = JsonParser.parseString(new String(in.readAllBytes(), StandardCharsets.UTF_8))
-                        .getAsJsonObject();
-                if (obj.has("version")) {
-                    return obj.get("version").getAsString();
+        try {
+            Path self = Path.of(NSumBridgeUpdater.class.getProtectionDomain()
+                    .getCodeSource().getLocation().toURI());
+            if (Files.isRegularFile(self)) {
+                try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(self.toFile())) {
+                    var entry = zip.getEntry("fabric.mod.json");
+                    if (entry != null) {
+                        try (InputStream in = zip.getInputStream(entry)) {
+                            JsonObject obj = JsonParser.parseString(
+                                    new String(in.readAllBytes(), StandardCharsets.UTF_8)).getAsJsonObject();
+                            if (obj.has("version")) {
+                                return obj.get("version").getAsString();
+                            }
+                        }
+                    }
                 }
             }
         } catch (Throwable t) {
