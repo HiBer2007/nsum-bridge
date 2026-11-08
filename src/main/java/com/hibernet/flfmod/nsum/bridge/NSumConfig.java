@@ -35,6 +35,8 @@ public final class NSumConfig {
     private String lastRuntimeVersion = "";
     /// 同步失败时是否仍然启动游戏（默认不启动，避免用旧文件进服）。
     private boolean launchOnSyncFailure = false;
+    /// 启动时是否自动检查 NSUM Bridge 自身的更新。
+    private boolean autoUpdateBridge = true;
 
     public String getRuntimeSourceDir() {
         return runtimeSourceDir == null ? "" : runtimeSourceDir;
@@ -68,6 +70,14 @@ public final class NSumConfig {
         this.launchOnSyncFailure = value;
     }
 
+    public boolean isAutoUpdateBridge() {
+        return autoUpdateBridge;
+    }
+
+    public void setAutoUpdateBridge(boolean value) {
+        this.autoUpdateBridge = value;
+    }
+
     public static NSumConfig load() {
         Path file = NSumPaths.configFile();
         if (!Files.isRegularFile(file)) {
@@ -88,6 +98,9 @@ public final class NSumConfig {
             }
             if (obj.has("launchOnSyncFailure")) {
                 config.launchOnSyncFailure = obj.get("launchOnSyncFailure").getAsBoolean();
+            }
+            if (obj.has("autoUpdateBridge")) {
+                config.autoUpdateBridge = obj.get("autoUpdateBridge").getAsBoolean();
             }
             return config;
         } catch (Exception e) {

@@ -46,6 +46,9 @@ public final class NSumBridge implements ModInitializer {
         NSumHttp.installAsDefault();
         NSumUi.register();
         NSumAutoInstaller.checkOnStartup();
+        if (System.getProperty("nsum.selftest", "").isBlank()) {
+            NSumBridgeUpdater.autoCheckOnStartup();
+        }
         NSumSelfTest.runIfRequested();
     }
 }

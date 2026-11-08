@@ -55,6 +55,32 @@ public final class NSumUi {
         LOG.info("[NSUM] GUI 注册完成：分类 nsum / 页面 nsum-bridge:home");
     }
 
+    private static Node bridgeCard() {
+        java.util.List<Node> children = new java.util.ArrayList<>();
+        children.add(FLFComponents.title("NSUM Bridge"));
+        children.add(FLFComponents.label("当前版本：" + NSumBridgeUpdater.currentVersion()));
+        children.add(FLFComponents.label("更新地址：metadata.hibernet.top（nsum-bridge）"));
+        children.add(FLFComponents.button("检查更新", () -> java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                NSumBridgeUpdater.UpdateInfo info = NSumBridgeUpdater.check();
+                javafx.application.Platform.runLater(() -> {
+                    if (info == null) {
+                        org.jackhuang.hmcl.ui.Controllers.dialog(
+                                "当前已是最新版本（" + NSumBridgeUpdater.currentVersion() + "）。",
+                                "NSUM Bridge",
+                                org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.INFO);
+                    } else {
+                        NSumBridgeUpdater.prompt(info);
+                    }
+                });
+            } catch (Throwable t) {
+                javafx.application.Platform.runLater(() -> org.jackhuang.hmcl.ui.Controllers.dialog(
+                        "检查更新失败：" + t.getMessage(), "NSUM Bridge",
+                        org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.ERROR));
+            }
+        })));
+        return FLFComponents.card(children.toArray(Node[]::new));
+    }
     private static Node runtimeCard() {
         NSumConfig config = NSumConfig.load();
         NSumRuntime.Status status = NSumRuntime.status();
