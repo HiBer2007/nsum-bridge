@@ -122,6 +122,19 @@ public final class NSumRuntime {
 
     /// 调用 Runtime 同步实例目录。
     public static SyncResult sync(NSumInstance instance, Path versionRoot) {
+        return sync(instance, versionRoot, null);
+    }
+
+    /// 调用 Runtime 同步实例目录，并逐行回调输出（供启动进度窗口展示）。
+    public static SyncResult sync(NSumInstance instance, Path versionRoot,
+                                   java.util.function.Consumer<String> onLine) {
+        return sync(instance, versionRoot, onLine, null);
+    }
+
+    /// 带取消判定的同步：检测到取消时强制结束 Runtime 进程并返回失败。
+    public static SyncResult sync(NSumInstance instance, Path versionRoot,
+                                   java.util.function.Consumer<String> onLine,
+                                   java.util.function.BooleanSupplier cancelled) {
         Status status = status();
         if (!status.installed()) {
             return new SyncResult(false, -1, null,
@@ -158,6 +171,7 @@ public final class NSumRuntime {
 
         LOG.info("[NSUM] 同步开始: {}", String.join(" ", command));
         StringBuilder output = new StringBuilder();
+        boolean runCancelled = false;
         int exit;
         try {
             ProcessBuilder builder = new ProcessBuilder(command)
@@ -168,16 +182,30 @@ public final class NSumRuntime {
                 byte[] buffer = new byte[8192];
                 int read;
                 while ((read = reader.read(buffer)) > 0) {
+                    if (cancelled != null && cancelled.getAsBoolean()) {
+                        process.destroyForcibly();
+                        runCancelled = true;
+                        break;
+                    }
                     String chunk = new String(buffer, 0, read, StandardCharsets.UTF_8);
                     output.append(chunk);
                     for (String line : chunk.split("\\R")) {
                         if (!line.isBlank()) {
                             LOG.info("[NSUM] {}", line);
+                            if (onLine != null) {
+                                try {
+                                    onLine.accept(line);
+                                } catch (Throwable ignored) {
+                                }
+                            }
                         }
                     }
                 }
             }
             exit = process.waitFor();
+            if (runCancelled) {
+                return new SyncResult(false, -2, logFile, "同步已取消");
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return new SyncResult(false, -1, logFile, "同步被中断");

@@ -58,7 +58,8 @@ public final class NSumModpackProvider implements ModpackProvider {
 
     @Override
     public Task<?> createCompletionTask(DefaultDependencyManager dependencyManager, String version) {
-        return null;
+        // 每次启动都会进入该阶段：先完成三元组校验/切换与内容同步，再进入原生启动步骤
+        return new NSumSyncTask(dependencyManager, version);
     }
 
     @Override

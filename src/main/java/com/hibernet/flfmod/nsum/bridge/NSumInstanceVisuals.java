@@ -38,13 +38,14 @@ public final class NSumInstanceVisuals {
             return;
         }
         try {
+            // 其它加载器/整合包可能自带 icon.*，NSUM 实例统一显示 NSUM 图标：
+            // 删除非 PNG 旧图标，并始终重写 icon.png。
             try (var stream = Files.list(versionRoot)) {
-                boolean exists = stream.anyMatch(path -> {
+                for (Path path : (Iterable<Path>) stream::iterator) {
                     String name = path.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
-                    return name.startsWith("icon.");
-                });
-                if (exists) {
-                    return;
+                    if (name.startsWith("icon.") && !name.equals("icon.png")) {
+                        Files.deleteIfExists(path);
+                    }
                 }
             } catch (IOException ignored) {
             }

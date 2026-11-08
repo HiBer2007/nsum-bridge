@@ -1,6 +1,6 @@
 /*
  * NSUM Bridge — HMCL integration for NeoServerUpdateModpack
- * Copyright (C) 2026 HiBerNET
+ * Copyright (C) 2026 HiBERNET
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -13,16 +13,24 @@ import com.hibernet.flfmod.api.launch.LaunchContext;
 import com.hibernet.flfmod.api.launch.LaunchStrategy;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jackhuang.hmcl.download.DefaultCacheRepository;
+import org.jackhuang.hmcl.download.DefaultDependencyManager;
+import org.jackhuang.hmcl.game.DefaultGameRepository;
+import org.jackhuang.hmcl.setting.DownloadProviders;
 import org.jackhuang.hmcl.util.platform.ManagedProcess;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 
-/// `nsum-runtime` 启动方式：先让 NSUM Runtime 同步实例，再交回 HMCL 默认启动。
+/// `nsum-runtime` 启动方式：接管受管实例的启动，交回 HMCL 默认启动。
 ///
-/// <p>接管条件 = 实例目录存在 `.NSUM/instance.json`。同步失败时默认中止启动
-/// （避免用陈旧文件进服），可在 NSUM 配置里改为仍启动。</p>
+/// <p>接管条件 = 实例目录存在 `.NSUM/instance.json`。</p>
+///
+/// <p>**同步时机**：正常实例会在 HMCL 的「处理游戏依赖」阶段由
+/// `NSumModpackProvider#createCompletionTask`（`NSumSyncTask`）完成版本校验与
+/// 内容同步，本策略只负责交回启动。仅当实例缺少 `modpack.json`（HMCL 不会调用
+/// completion task 的旧实例/手工放置场景）时，这里做一次兜底同步。</p>
 public final class NSumLaunchStrategy implements LaunchStrategy {
 
     public static final String NAME = "nsum-runtime";
@@ -63,40 +71,33 @@ public final class NSumLaunchStrategy implements LaunchStrategy {
         NSumConfig config = NSumConfig.load();
         NSumInstanceVisuals.ensureIcon(versionRoot);
 
-        // 游戏/库/加载器：由 bridge 复用 HMCL 安装器安装；三元组（游戏版本/加载器/加载器版本）
-        // 任一变化都会删除旧版本并重装，之后再同步内容。
-        if (context.repository() instanceof org.jackhuang.hmcl.game.DefaultGameRepository) {
-            var repository = (org.jackhuang.hmcl.game.DefaultGameRepository) context.repository();
+        // 正常路径：completion task 已完成同步；这里只兜底没有 modpack.json 的实例
+        boolean completionTaskRuns = Files.isRegularFile(versionRoot.resolve("modpack.json"));
+        if (!completionTaskRuns
+                && context.repository() instanceof DefaultGameRepository repository) {
+            LOG.info("[NSUM] 实例缺少 modpack.json，启动策略内执行兜底同步");
             try {
-                boolean changed = NSumGameInstaller.ensure(
-                        repository, context.version().getId(), instance.get());
-                if (changed) {
-                    LOG.info("[NSUM] 已按 manifest 安装/切换游戏与加载器，准备重新同步内容");
+                NSumGameInstaller.ensure(repository, context.version().getId(), instance.get());
+                NSumRuntime.SyncResult result = NSumRuntime.sync(
+                        instance.get(), versionRoot, null,
+                        () -> Thread.currentThread().isInterrupted() || config.isLaunchOnSyncFailure() && false);
+                if (!result.success()) {
+                    String message = "NSUM 同步失败: " + result.message();
+                    LOG.error("[NSUM] {}", message);
+                    if (!config.isLaunchOnSyncFailure()) {
+                        throw new IllegalStateException(message);
+                    }
                 }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw e;
             } catch (Exception e) {
-                String message = "NSUM 安装/切换游戏或加载器失败: " + e.getMessage();
+                String message = "NSUM 安装/同步失败: " + e.getMessage();
                 LOG.error("[NSUM] {}", message, e);
                 if (!config.isLaunchOnSyncFailure()) {
                     throw new IllegalStateException(message, e);
                 }
-                LOG.warn("[NSUM] 配置允许失败后继续启动");
             }
-        }
-
-        NSumRuntime.SyncResult result = NSumRuntime.sync(instance.get(), versionRoot);
-
-        if (result.success()) {
-            LOG.debug("[NSUM] 同步完成，内容已更新");
-        }
-
-        if (!result.success()) {
-            String message = "NSUM 同步失败: " + result.message()
-                    + (result.logFile() == null ? "" : "（日志: " + result.logFile() + "）");
-            LOG.error("[NSUM] {}", message);
-            if (!config.isLaunchOnSyncFailure()) {
-                throw new IllegalStateException(message);
-            }
-            LOG.warn("[NSUM] 配置允许同步失败后继续启动，使用现有文件启动游戏");
         }
 
         // 交回 HMCL 默认启动：FLF API 的 Mixin 用 ThreadLocal 防止重入递归。
