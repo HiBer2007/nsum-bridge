@@ -75,6 +75,7 @@ public final class NSumSyncTask extends Task<Void> {
         } catch (Exception e) {
             LOG.error("[NSUM] 安装/切换游戏或加载器失败", e);
             if (!config.isLaunchOnSyncFailure()) {
+                ui.fail("安装/切换游戏或加载器失败，已停止启动");
                 throw new IOException("NSUM 安装/切换游戏或加载器失败: " + e.getMessage(), e);
             }
         }
@@ -91,7 +92,7 @@ public final class NSumSyncTask extends Task<Void> {
         }
         if (!result.success()) {
             LOG.error("[NSUM] 同步失败: {}", result.message());
-            ui.setStatus("同步失败：" + result.message());
+            ui.fail("同步失败，已停止启动");
             if (!config.isLaunchOnSyncFailure()) {
                 throw new IOException("NSUM 同步失败: " + result.message());
             }

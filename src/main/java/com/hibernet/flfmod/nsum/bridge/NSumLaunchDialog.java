@@ -112,6 +112,7 @@ final class NSumLaunchDialog {
     }
 
     void setStatus(String text) {
+        lastStatus = text;
         update(() -> {
             Label label = statusRef.get();
             if (label != null) {
@@ -121,6 +122,7 @@ final class NSumLaunchDialog {
     }
 
     void setDetail(String text) {
+        lastDetail = text;
         update(() -> {
             Label label = detailRef.get();
             if (label != null) {
@@ -130,6 +132,7 @@ final class NSumLaunchDialog {
     }
 
     void setProgress(double progress) {
+        lastProgress = progress;
         update(() -> {
             ProgressBar bar = barRef.get();
             if (bar != null) {
@@ -138,6 +141,11 @@ final class NSumLaunchDialog {
         });
     }
 
+    void fail(String text) {
+        setStatus(text);
+        setProgress(0);
+    }
+    
     void finish(String text) {
         setStatus(text);
         setProgress(1);

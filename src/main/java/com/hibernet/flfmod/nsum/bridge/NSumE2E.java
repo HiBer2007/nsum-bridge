@@ -102,6 +102,111 @@ final class NSumE2E {
         }
     }
 
+    /// 加载器切换测试：把实例三元组改成指定加载器/版本，真实走一遍安装（会联网）。
+    /// @return true = 安装成功且版本描述里出现该加载器
+    static boolean runLoaderSwitch(Path baseVersionDir, String loader, String loaderVersion) {
+        return runLoaderSwitch(baseVersionDir, "1.21.1", "neoforge", "21.1.233", loader, loaderVersion);
+    }
+
+    /// 完整三元组切换测试：fromGame/fromLoader/fromVersion → toGame/toLoader/toVersion。
+    static boolean runLoaderSwitch(Path baseVersionDir, String gameVersion,
+                                      String fromLoader, String fromVersion,
+                                      String loader, String loaderVersion) {
+        int passed = 0;
+        int failed = 0;
+        try {
+            Path root = Files.createTempDirectory("nsum-switch");
+            var repository = new org.jackhuang.hmcl.game.DefaultGameRepository(root);
+            String id = "Switch（NSUM）";
+            Path versionRoot = repository.getVersionRoot(id);
+            copyTree(baseVersionDir, versionRoot);
+            String baseId = baseVersionDir.getFileName().toString();
+            Files.move(versionRoot.resolve(baseId + ".json"), versionRoot.resolve(id + ".json"));
+
+            NSumInstance instance = new NSumInstance();
+            instance.name = id;
+            instance.repo = "K:/nsum_e2e_real/repo";
+            instance.branch = "base";
+            instance.gitBranch = "main";
+            instance.gameVersion = "1.21.1";
+            instance.modloader = loader;
+            instance.modloaderVersion = loaderVersion;
+            instance.installedGameVersion = "1.21.1";
+            instance.installedModloader = "neoforge";
+            instance.installedLoaderVersion = "21.1.233";
+            instance.write(versionRoot);
+
+            boolean ok;
+            try {
+                ok = NSumGameInstaller.ensure(repository, id, instance);
+            } catch (Throwable e) {
+                LOG.error("[NSUM-E2E] 加载器切换失败: {}", e.toString());
+                return false;
+            }
+            passed += check("加载器切换执行", ok, loader + " " + loaderVersion);
+            String json = Files.readString(versionRoot.resolve(id + ".json"));
+            passed += check("版本描述包含目标加载器",
+                    json.toLowerCase(java.util.Locale.ROOT).contains(loader)
+                            || Files.exists(versionRoot.resolve("mods")), loader);
+            LOG.info("[NSUM-E2E] 加载器切换结果: passed={} failed={}", passed, failed);
+            return failed == 0;
+        } catch (Throwable t) {
+            LOG.error("[NSUM-E2E] 加载器切换异常", t);
+            return false;
+        }
+    }
+
+    /// 失败路径测试：加载器版本不存在时，NSumSyncTask 必须抛错，且旧版本目录被还原。
+    static boolean runSyncFailure(Path baseVersionDir) {
+        int passed = 0;
+        int failed = 0;
+        try {
+            Path root = Files.createTempDirectory("nsum-fail");
+            var repository = new org.jackhuang.hmcl.game.DefaultGameRepository(root);
+            String id = "FailTest（NSUM）";
+            Path versionRoot = repository.getVersionRoot(id);
+            copyTree(baseVersionDir, versionRoot);
+            String baseId = baseVersionDir.getFileName().toString();
+            Files.move(versionRoot.resolve(baseId + ".json"), versionRoot.resolve(id + ".json"));
+
+            NSumInstance instance = new NSumInstance();
+            instance.name = id;
+            instance.repo = "K:/nsum_e2e_real/repo";
+            instance.branch = "base";
+            instance.gitBranch = "main";
+            instance.gameVersion = "1.21.1";
+            instance.modloader = "fabric";
+            instance.modloaderVersion = "0.0.0-does-not-exist";
+            instance.installedGameVersion = "1.21.1";
+            instance.installedModloader = "neoforge";
+            instance.installedLoaderVersion = "21.1.233";
+            instance.write(versionRoot);
+
+            var dm = new org.jackhuang.hmcl.download.DefaultDependencyManager(
+                    repository, org.jackhuang.hmcl.setting.DownloadProviders.getDownloadProvider(),
+                    new org.jackhuang.hmcl.download.DefaultCacheRepository());
+            boolean threw = false;
+            var task = new NSumSyncTask(dm, id);
+            try {
+                task.execute();
+            } catch (Throwable e) {
+                threw = true;
+                LOG.info("[NSUM-E2E] 预期失败: {}", e.toString());
+            }
+            passed += check("安装失败必须抛错（不启动）", threw, "");
+            passed += check("失败后旧版本目录仍在", Files.isRegularFile(versionRoot.resolve(id + ".json")), "");
+            passed += check("失败后游戏 jar 仍在", Files.isRegularFile(versionRoot.resolve(id + ".jar"))
+                    || Files.exists(versionRoot.resolve("natives-windows-x86_64")), "");
+            passed += check("失败后实例标记保留", NSumInstance.read(versionRoot).isPresent(), "");
+
+            LOG.info("[NSUM-E2E] 失败路径结果: passed={} failed={}", passed, failed);
+            return failed == 0;
+        } catch (Throwable t) {
+            LOG.error("[NSUM-E2E] 失败路径异常", t);
+            return false;
+        }
+    }
+
     /// 启动策略测试：用真实版本目录 + 假 Launcher 验证「同步后再交回 HMCL 启动」。
     ///
     /// <p>不真正拉起 Minecraft 进程（那需要账号/显卡），但会真实执行

@@ -100,10 +100,14 @@ public final class NSumGameInstaller {
                 instance.installedLoaderVersion);
 
         Path versionRoot = repository.getVersionRoot(id);
+        Path backupRoot = null;
         if (Files.isRegularFile(versionRoot.resolve(id + ".json"))) {
-            // 已存在但三元组不同：删掉旧版本目录，避免加载器类型/版本叠加
-            LOG.info("[NSUM] 删除旧版本目录以切换: {}", versionRoot);
-            deleteDirectory(versionRoot);
+            // 已存在但三元组不同：先把旧版本目录挪到旁边（而不是直接删除），
+            // 安装/下载失败时再还原，避免「下载失败 → 实例被清空」。
+            backupRoot = versionRoot.resolveSibling(id + ".nsum-backup");
+            deleteDirectory(backupRoot);
+            LOG.info("[NSUM] 备份旧版本目录以切换: {} -> {}", versionRoot, backupRoot);
+            Files.move(versionRoot, backupRoot);
         }
 
         String loader = normalizeLoader(instance.modloader);
@@ -125,8 +129,24 @@ public final class NSumGameInstaller {
         }
 
         Task<?> task = builder.buildAsync();
-        runBlocking(task, 30);
-
+        try {
+            runBlocking(task, 30);
+        } catch (Exception e) {
+            // 安装失败：清掉半成品，还原旧版本，保证实例仍可用
+            if (backupRoot != null) {
+                try {
+                    deleteDirectory(versionRoot);
+                    Files.move(backupRoot, versionRoot);
+                    LOG.warn("[NSUM] 安装失败，已还原旧版本目录: {}", versionRoot);
+                } catch (IOException restoreError) {
+                    LOG.error("[NSUM] 还原旧版本目录失败: {}", restoreError.toString());
+                }
+            }
+            throw e;
+        }
+        if (backupRoot != null) {
+            deleteDirectory(backupRoot);
+        }
         instance.installedGameVersion = instance.gameVersion;
         instance.installedModloader = loader;
         instance.installedLoaderVersion = instance.modloaderVersion;

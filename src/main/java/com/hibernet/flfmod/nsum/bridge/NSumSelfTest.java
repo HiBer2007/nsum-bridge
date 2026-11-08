@@ -227,6 +227,30 @@ public final class NSumSelfTest {
                 } else {
                     LOG.info("[NSUM-TEST] 启动策略: SKIP（未指定 nsum.selftest.e2e.base）");
                 }
+
+                String failBase = System.getProperty("nsum.selftest.e2e.failBase", "");
+                if (!failBase.isBlank()) {
+                    boolean failOk = NSumE2E.runSyncFailure(Path.of(failBase));
+                    passed += failOk ? 1 : 0;
+                    failed += failOk ? 0 : 1;
+                } else {
+                    LOG.info("[NSUM-TEST] 失败路径: SKIP（未指定 nsum.selftest.e2e.failBase）");
+                }
+
+                String switchBase = System.getProperty("nsum.selftest.e2e.switchBase", "");
+                if (!switchBase.isBlank()) {
+                    String loader = System.getProperty("nsum.selftest.e2e.switchLoader", "fabric");
+                    String loaderVersion = System.getProperty("nsum.selftest.e2e.switchVersion", "0.16.9");
+                    String toGame = System.getProperty("nsum.selftest.e2e.switchGame", "1.21.1");
+                    String fromLoader = System.getProperty("nsum.selftest.e2e.switchFromLoader", "neoforge");
+                    String fromVersion = System.getProperty("nsum.selftest.e2e.switchFromVersion", "21.1.233");
+                    boolean switchOk = NSumE2E.runLoaderSwitch(Path.of(switchBase), toGame,
+                            fromLoader, fromVersion, loader, loaderVersion);
+                    passed += switchOk ? 1 : 0;
+                    failed += switchOk ? 0 : 1;
+                } else {
+                    LOG.info("[NSUM-TEST] 加载器切换: SKIP（未指定 nsum.selftest.e2e.switchBase）");
+                }
             } else {
                 LOG.info("[NSUM-TEST] 端到端: SKIP（未指定 nsum.selftest.e2e.zip）");
             }
