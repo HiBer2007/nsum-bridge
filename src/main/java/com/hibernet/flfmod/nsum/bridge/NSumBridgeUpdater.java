@@ -18,6 +18,7 @@ import org.jackhuang.hmcl.task.FileDownloadTask;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.task.TaskExecutor;
 import org.jackhuang.hmcl.ui.Controllers;
+import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane;
 import org.jackhuang.hmcl.util.TaskCancellationAction;
 
@@ -158,8 +159,10 @@ public final class NSumBridgeUpdater {
     private static Task<Void> applyTask(Path staging, UpdateInfo info) {
         return Task.supplyAsync(() -> {
             String result = apply(staging, info);
-            Platform.runLater(() -> Controllers.dialogLater(new MessageDialogPane.Builder(
-                    result, "NSUM Bridge", MessageDialogPane.MessageType.INFO).build()));
+            Platform.runLater(() -> Controllers.dialogLater(
+                    new MessageDialogPane.Builder(result, "NSUM Bridge", MessageDialogPane.MessageType.INFO)
+                            .addAction("打开文件夹", () -> FXUtils.openFolder(staging.getParent()))
+                            .build()));
             return null;
         });
     }
