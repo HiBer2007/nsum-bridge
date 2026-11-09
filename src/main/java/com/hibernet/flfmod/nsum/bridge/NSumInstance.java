@@ -38,6 +38,8 @@ public final class NSumInstance {
     public String repo = "";
     /// 整合包分支（合并用）。
     public String branch = "base";
+    /// 分支类型：universal / client / server（服务端专用包不能用于客户端启动）。
+    public String branchType = "universal";
     /// Git 分支（checkout 用；空 = 与整合包分支同名）。
     public String gitBranch = "";
     /// 展示名。
@@ -71,6 +73,7 @@ public final class NSumInstance {
             if (obj.has("schema")) instance.schema = obj.get("schema").getAsInt();
             if (obj.has("repo")) instance.repo = obj.get("repo").getAsString();
             if (obj.has("branch")) instance.branch = obj.get("branch").getAsString();
+            if (obj.has("branchType")) instance.branchType = obj.get("branchType").getAsString();
             if (obj.has("gitBranch")) instance.gitBranch = obj.get("gitBranch").getAsString();
             if (obj.has("name")) instance.name = obj.get("name").getAsString();
             if (obj.has("gameVersion")) instance.gameVersion = obj.get("gameVersion").getAsString();

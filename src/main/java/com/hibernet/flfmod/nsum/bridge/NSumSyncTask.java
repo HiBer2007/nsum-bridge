@@ -63,6 +63,13 @@ public final class NSumSyncTask extends Task<Void> {
         ui.setStatus("检查实例与同步状态…");
         NSumInstanceVisuals.ensureIcon(versionRoot);
 
+        if ("server".equalsIgnoreCase(instance.branchType) && !config.isLaunchOnSyncFailure()) {
+            String message = "该整合包分支为「服务端专用」，不能用于客户端启动";
+            LOG.warn("[NSUM] {}", message);
+            ui.fail(message);
+            throw new IOException(message);
+        }
+
         setStage("NSUM：检查游戏与加载器版本");
         ui.setStatus("检查游戏与加载器版本…");
         ui.setDetail(instance.gameVersion + " · " + instance.modloader + " " + instance.modloaderVersion);

@@ -104,6 +104,7 @@ public final class NSumModpackProvider implements ModpackProvider {
         instance.repo = optString(instanceObj, "repo", "");
         instance.branch = optString(instanceObj, "branch", "base");
         instance.gitBranch = optString(instanceObj, "gitBranch", "");
+        instance.branchType = optString(instanceObj, "branchType", "universal");
         instance.gameVersion = modpack.getGameVersion();
         instance.modloader = optString(obj, "modloader", "fabric");
         instance.modloaderVersion = optString(obj, "modloaderVersion", "");

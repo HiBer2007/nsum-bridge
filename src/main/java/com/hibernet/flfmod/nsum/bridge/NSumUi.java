@@ -92,6 +92,7 @@ public final class NSumUi {
                 ? "状态：已安装" + (status.version().isBlank() ? "" : "（" + status.version() + "）")
                 : "状态：未安装"));
         children.add(FLFComponents.label("目录：" + NSumPaths.runtimeDir()));
+        children.add(FLFComponents.label("分支类型示例：universal（通用）/ client（客户端专用）/ server（服务端专用）"));
         children.add(FLFComponents.label("源目录："
                 + (config.getRuntimeSourceDir().isBlank() ? "（未配置）" : config.getRuntimeSourceDir())));
 
