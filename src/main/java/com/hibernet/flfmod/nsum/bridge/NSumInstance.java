@@ -40,6 +40,8 @@ public final class NSumInstance {
     public String branch = "base";
     /// 分支类型：universal / client / server（服务端专用包不能用于客户端启动）。
     public String branchType = "universal";
+    /// 服务端核心（paper/folia/velocity/…，仅服务端专用包使用）。
+    public String core = "";
     /// Git 分支（checkout 用；空 = 与整合包分支同名）。
     public String gitBranch = "";
     /// 展示名。
