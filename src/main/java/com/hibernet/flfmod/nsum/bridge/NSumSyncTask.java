@@ -59,6 +59,15 @@ public final class NSumSyncTask extends Task<Void> {
         }
         NSumInstance instance = read.get();
         NSumConfig config = NSumConfig.load();
+        NSumBranchSelection selection = NSumBranchSelection.takePending();
+        if (selection != null) {
+            selection.applyTo(instance);
+            try {
+                instance.write(versionRoot);
+            } catch (IOException e) {
+                LOG.warn("[NSUM] 写回启动分支选择失败: {}", e.toString());
+            }
+        }
         NSumLaunchDialog ui = NSumLaunchDialog.mount();
         ui.setStatus("检查实例与同步状态…");
         NSumInstanceVisuals.ensureIcon(versionRoot);
@@ -103,6 +112,10 @@ public final class NSumSyncTask extends Task<Void> {
             if (!config.isLaunchOnSyncFailure()) {
                 throw new IOException("NSUM 同步失败: " + result.message());
             }
+        } else if (config.isMclhrSync()) {
+            setStage("NSUM：聚合模组目录（mclhr）");
+            ui.setStatus("聚合模组目录（mclhr）…");
+            NSumMclhr.afterSync(versionRoot, line -> ui.acceptLine(line));
         }
         ui.finish("同步完成，准备启动游戏…");
         setStage("NSUM：同步完成");

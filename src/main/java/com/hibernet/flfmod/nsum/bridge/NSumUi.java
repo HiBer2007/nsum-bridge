@@ -43,10 +43,12 @@ public final class NSumUi {
         api.registerPage("nsum-bridge:home", () -> new FLFPage("NSUM", FLFComponents.column(
                 bridgeCard(),
                 runtimeCard(),
+                reposCard(),
                 instancesCard(),
                 FLFComponents.card(
                         FLFComponents.label("整合包类型：nsum（导入 *_nsum.zip 即创建受管实例）"),
-                        FLFComponents.label("启动方式：nsum-runtime（启动前由 Runtime 同步实例）")))));
+                        FLFComponents.label("启动方式：nsum-runtime（启动前选择 Git 分支与整合包分支，再同步实例）"),
+                        FLFComponents.label("模组共享：Runtime 把 mods 收进 stores/mods 并用硬链接复用（mclhr 兼容）")))));
         api.registerPageButton("nsum", "home", "NSUM 管理", SVG.SETTINGS, "nsum-bridge:home");
 
         api.registerSettingsSection(SettingsArea.ABOUT, "NSUM",
@@ -99,6 +101,23 @@ public final class NSumUi {
         children.add(FLFComponents.button("安装 / 更新 Runtime", () -> installRuntime(config)));
         children.add(FLFComponents.button("从元数据下载 Runtime", NSumUi::installFromMetadata));
         children.add(FLFComponents.button("从 downloads 安装", NSumAutoInstaller::installFromDownloads));
+        children.add(FLFComponents.label("编辑器："
+                + (NSumEditor.available() ? "已包含（NeoWorkspaceEditor.exe）" : "未安装（请重新安装 Runtime）")));
+        children.add(FLFComponents.button("打开 NSUM 编辑器", () -> {
+            if (!NSumEditor.open(NSumPaths.nsumDir().toString())) {
+                Controllers.dialog("无法启动编辑器：Runtime 中缺少 NeoWorkspaceEditor.exe",
+                        "NSUM", org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.WARNING);
+            }
+        }));
+        return FLFComponents.card(children.toArray(Node[]::new));
+    }
+
+    private static Node reposCard() {
+        List<Node> children = new ArrayList<>();
+        children.add(FLFComponents.title("NSUM 仓库"));
+        children.add(FLFComponents.label("新建实例时可选择「克隆 NSUM 仓库」或「创建 NSUM 仓库」，二者都会直接打开编辑器。"));
+        children.add(FLFComponents.button("克隆 NSUM 仓库", NSumRepoActions::promptClone));
+        children.add(FLFComponents.button("创建 NSUM 仓库", NSumRepoActions::promptCreate));
         return FLFComponents.card(children.toArray(Node[]::new));
     }
 
@@ -176,6 +195,14 @@ public final class NSumUi {
                     children.add(FLFComponents.button(
                             "同步 " + root.getFileName() + " 并生成版本描述",
                             () -> syncOne(root, instance)));
+                    children.add(FLFComponents.button(
+                            "编辑 " + root.getFileName(),
+                            () -> {
+                                if (!NSumEditor.open(instance.repo)) {
+                                    Controllers.dialog("无法启动编辑器：请先安装包含编辑器的 Runtime",
+                                            "NSUM", org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.WARNING);
+                                }
+                            }));
                 });
             }
         }

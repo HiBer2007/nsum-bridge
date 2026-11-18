@@ -9,6 +9,11 @@
  */
 package com.hibernet.flfmod.nsum.bridge.mixin;
 
+import com.hibernet.flfmod.nsum.bridge.NSumBranchSelection;
+import com.hibernet.flfmod.nsum.bridge.NSumBranchSelectTask;
+import com.hibernet.flfmod.nsum.bridge.NSumBranchWizard;
+import com.hibernet.flfmod.nsum.bridge.NSumConfig;
+import com.hibernet.flfmod.nsum.bridge.NSumInstance;
 import com.hibernet.flfmod.nsum.bridge.NSumSyncTask;
 import org.jackhuang.hmcl.download.DefaultCacheRepository;
 import org.jackhuang.hmcl.download.DefaultDependencyManager;
@@ -42,15 +47,22 @@ public abstract class MixinLauncherHelper {
             return;
         }
         String versionId = version.getId();
-        if (!repository.getVersionRoot(versionId).resolve(".NSUM").toFile().isDirectory()) {
+        java.nio.file.Path versionRoot = repository.getVersionRoot(versionId);
+        if (!versionRoot.resolve(".NSUM").toFile().isDirectory()) {
             return;
         }
         DefaultDependencyManager dependencyManager = new DefaultDependencyManager(
                 repository,
                 DownloadProviders.getDownloadProvider(),
                 new DefaultCacheRepository());
-        Task<JavaRuntime> wrapped = new NSumSyncTask(dependencyManager, versionId)
+        boolean wizard = NSumInstance.read(versionRoot).isPresent()
+                && NSumConfig.load().isBranchWizard();
+        Task<Void> first = wizard
+                ? new NSumBranchSelectTask(dependencyManager, versionId)
+                : new NSumSyncTask(dependencyManager, versionId);
+        Task<JavaRuntime> wrapped = first
                 .withStage("NSUM 更新检查")
+                .thenComposeAsync(ignored -> wizard ? new NSumSyncTask(dependencyManager, versionId) : null)
                 .thenComposeAsync(ignored -> original);
         cir.setReturnValue(wrapped);
     }

@@ -39,6 +39,8 @@ final class NSumLaunchDialog {
     private final AtomicReference<Label> detailRef = new AtomicReference<>();
     private final AtomicReference<ProgressBar> barRef = new AtomicReference<>();
     private final AtomicReference<VBox> boxRef = new AtomicReference<>();
+    private static volatile VBox launchContainer;
+    private static volatile Node selectionPanel;
     private volatile boolean mounted;
     private volatile String lastStatus = "准备中…";
     private volatile String lastDetail = "";
@@ -66,6 +68,7 @@ final class NSumLaunchDialog {
                 LOG.debug("[NSUM] 启动对话框结构不符合预期，跳过注入");
                 return;
             }
+            launchContainer = container;
 
             Label title = new Label("NSUM 更新检查");
             title.setStyle("-fx-font-size: 12px; -fx-font-weight: bold;");
@@ -109,6 +112,32 @@ final class NSumLaunchDialog {
             }
         }
         return null;
+    }
+
+    /// 把三步选择面板嵌入启动任务对话框（内部对话框，不另开窗口）。
+    static void mountSelectionPanel(Node panel) {
+        try {
+            Node pane = findLaunchDialog();
+            if (!(pane instanceof javafx.scene.layout.BorderPane borderPane)
+                    || !(borderPane.getCenter() instanceof VBox container)) {
+                LOG.warn("[NSUM] 未找到启动对话框容器，无法嵌入分支选择面板");
+                return;
+            }
+            launchContainer = container;
+            container.getChildren().add(0, panel);
+            selectionPanel = panel;
+        } catch (Throwable t) {
+            LOG.warn("[NSUM] 嵌入分支选择面板失败: {}", t.toString());
+        }
+    }
+
+    static void unmountSelectionPanel() {
+        VBox container = launchContainer;
+        Node panel = selectionPanel;
+        if (container != null && panel != null) {
+            container.getChildren().remove(panel);
+        }
+        selectionPanel = null;
     }
 
     void setStatus(String text) {

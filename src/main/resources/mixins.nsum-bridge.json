@@ -5,7 +5,8 @@
   "refmap": "nsum-bridge-refmap.json",
   "mixins": [
     "MixinModpackHelper",
-    "MixinLauncherHelper"
+    "MixinLauncherHelper",
+    "MixinModpackSelectionPage"
   ],
   "client": [],
   "server": [],

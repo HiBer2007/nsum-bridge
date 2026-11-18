@@ -65,6 +65,11 @@ public final class NSumPaths {
         return nsumDir().resolve("logs");
     }
 
+    /// `.hmcl/nsum/repos/`（克隆/创建的 NSUM 仓库）。
+    public static Path reposDir() {
+        return nsumDir().resolve("repos");
+    }
+
     /// 实例标记：`<实例目录>/.NSUM/instance.json`。
     public static Path instanceMarker(Path versionRoot) {
         return versionRoot.resolve(".NSUM").resolve(INSTANCE_MARKER);

@@ -1,6 +1,6 @@
 # nsum-bridge 独立版本目录（不依赖 FLFHMCL 工作区）
 [versions]
-nsumBridge   = "0.2.5"
+nsumBridge   = "0.3.0"
 
 hmcl         = "3.16.4"
 fabricLoader = "0.19.3"
@@ -13,7 +13,7 @@ gson         = "2.10.1"
 flfApi        = "1.1"
 flfApiModpack = "0.1.0"
 flfApiLaunch  = "0.1.0"
-flfUiApi      = "2.2.0"
+flfUiApi      = "2.3.0"
 
 [libraries]
 fabric-loader = { module = "net.fabricmc:fabric-loader", version.ref = "fabricLoader" }

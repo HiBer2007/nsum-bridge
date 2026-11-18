@@ -37,6 +37,12 @@ public final class NSumConfig {
     private boolean launchOnSyncFailure = false;
     /// 启动时是否自动检查 NSUM Bridge 自身的更新。
     private boolean autoUpdateBridge = true;
+    /// 启动前是否弹出「Git 分支 → 整合包分支 → 确认」三步向导。
+    private boolean branchWizard = true;
+    /// 同步后是否调用 mclhr 的 mod 目录同步（共享库仓 / 多目录聚合）。
+    private boolean mclhrSync = true;
+    /// 指定 java 可执行文件（空 = JAVA_HOME/bin/java.exe 或 PATH 中的 java）。
+    private String javaPath = "";
 
     public String getRuntimeSourceDir() {
         return runtimeSourceDir == null ? "" : runtimeSourceDir;
@@ -78,6 +84,30 @@ public final class NSumConfig {
         this.autoUpdateBridge = value;
     }
 
+    public boolean isBranchWizard() {
+        return branchWizard;
+    }
+
+    public void setBranchWizard(boolean value) {
+        this.branchWizard = value;
+    }
+
+    public boolean isMclhrSync() {
+        return mclhrSync;
+    }
+
+    public void setMclhrSync(boolean value) {
+        this.mclhrSync = value;
+    }
+
+    public String getJavaPath() {
+        return javaPath == null ? "" : javaPath;
+    }
+
+    public void setJavaPath(String value) {
+        this.javaPath = value == null ? "" : value;
+    }
+
     public static NSumConfig load() {
         Path file = NSumPaths.configFile();
         if (!Files.isRegularFile(file)) {
@@ -101,6 +131,15 @@ public final class NSumConfig {
             }
             if (obj.has("autoUpdateBridge")) {
                 config.autoUpdateBridge = obj.get("autoUpdateBridge").getAsBoolean();
+            }
+            if (obj.has("branchWizard")) {
+                config.branchWizard = obj.get("branchWizard").getAsBoolean();
+            }
+            if (obj.has("mclhrSync")) {
+                config.mclhrSync = obj.get("mclhrSync").getAsBoolean();
+            }
+            if (obj.has("javaPath")) {
+                config.javaPath = obj.get("javaPath").getAsString();
             }
             return config;
         } catch (Exception e) {
