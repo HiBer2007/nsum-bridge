@@ -50,7 +50,7 @@ public final class NSumSyncTask extends Task<Void> {
     @Override
     public void execute() throws Exception {
         DefaultGameRepository repository = dependencyManager.getGameRepository();
-        Path versionRoot = repository.getVersionRoot(versionId);
+        Path versionRoot = repository.getInstanceRoot(new org.jackhuang.hmcl.game.GameInstanceID(versionId));
         Optional<NSumInstance> read = NSumInstance.read(versionRoot);
         if (read.isEmpty()) {
             LOG.info("[NSUM] 实例标记缺失，跳过同步: {}", versionRoot);

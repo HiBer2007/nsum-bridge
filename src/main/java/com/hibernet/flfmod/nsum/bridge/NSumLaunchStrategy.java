@@ -74,10 +74,11 @@ public final class NSumLaunchStrategy implements LaunchStrategy {
         // 正常路径：completion task 已完成同步；这里只兜底没有 modpack.json 的实例
         boolean completionTaskRuns = Files.isRegularFile(versionRoot.resolve("modpack.json"));
         if (!completionTaskRuns
-                && context.repository() instanceof DefaultGameRepository repository) {
+                && context.instance() != null
+                && context.instance().getRepository() instanceof org.jackhuang.hmcl.game.DefaultGameRepository repository) {
             LOG.info("[NSUM] 实例缺少 modpack.json，启动策略内执行兜底同步");
             try {
-                NSumGameInstaller.ensure(repository, context.version().getId(), instance.get());
+                NSumGameInstaller.ensure(repository, context.instance().getId().id(), instance.get());
                 NSumRuntime.SyncResult result = NSumRuntime.sync(
                         instance.get(), versionRoot, null,
                         () -> Thread.currentThread().isInterrupted() || config.isLaunchOnSyncFailure() && false);
@@ -105,13 +106,13 @@ public final class NSumLaunchStrategy implements LaunchStrategy {
     }
 
     private static Path versionRoot(LaunchContext context) {
-        if (context.version() == null || context.repository() == null) {
+        if (context.instance() == null) {
             return null;
         }
-        String id = context.version().getId();
+        String id = context.instance().getId().id();
         if (id == null || id.isBlank()) {
             return null;
         }
-        return context.repository().getVersionRoot(id);
+        return context.instance().getInstanceRoot();
     }
 }

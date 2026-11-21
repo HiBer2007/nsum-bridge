@@ -15,6 +15,9 @@ import org.jackhuang.hmcl.download.DefaultCacheRepository;
 import org.jackhuang.hmcl.download.DefaultDependencyManager;
 import org.jackhuang.hmcl.download.GameBuilder;
 import org.jackhuang.hmcl.game.DefaultGameRepository;
+import org.jackhuang.hmcl.game.GameComponentType;
+import org.jackhuang.hmcl.game.GameInstanceID;
+import org.jackhuang.hmcl.game.GameRepository;
 import org.jackhuang.hmcl.setting.DownloadProviders;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.task.TaskExecutor;
@@ -65,11 +68,11 @@ public final class NSumGameInstaller {
     }
 
     /// 三元组是否与实例要求一致（且版本目录存在）。空值视为“未知，不做判断”。
-    public static boolean matches(DefaultGameRepository repository, String id, NSumInstance instance) {
+    public static boolean matches(GameRepository repository, String id, NSumInstance instance) {
         if (repository == null || id == null || instance == null) {
             return false;
         }
-        Path versionRoot = repository.getVersionRoot(id);
+        Path versionRoot = repository.getInstanceRoot(new GameInstanceID(id));
         if (!Files.isRegularFile(versionRoot.resolve(id + ".json"))) {
             return false;
         }
@@ -89,7 +92,7 @@ public final class NSumGameInstaller {
     /// 安装或切换（阻塞直到完成；内部用 HMCL 的 Task 链）。
     ///
     /// @return true = 已安装/已切换；false = 无需变更
-    public static boolean ensure(DefaultGameRepository repository, String id, NSumInstance instance)
+    public static boolean ensure(GameRepository repository, String id, NSumInstance instance)
             throws Exception {
         if (matches(repository, id, instance)) {
             return false;
@@ -99,7 +102,7 @@ public final class NSumGameInstaller {
                 instance.installedGameVersion, instance.installedModloader,
                 instance.installedLoaderVersion);
 
-        Path versionRoot = repository.getVersionRoot(id);
+        Path versionRoot = repository.getInstanceRoot(new GameInstanceID(id));
         Path backupRoot = null;
         if (Files.isRegularFile(versionRoot.resolve(id + ".json"))) {
             // 已存在但三元组不同：先把旧版本目录挪到旁边（而不是直接删除），
@@ -115,17 +118,23 @@ public final class NSumGameInstaller {
             throw new IOException("nsum.modpack.json 缺少 gameVersion，无法安装游戏");
         }
 
+        GameComponentType loaderType = loader.isBlank()
+                ? null : GameComponentType.fromPatchId(loader);
+        if (loaderType == null && !loader.isBlank()) {
+            throw new IOException("HMCL 3.17 不支持的加载器类型: " + loader);
+        }
+
+        DefaultGameRepository defaultRepository = (DefaultGameRepository) repository;
         DefaultDependencyManager dependencyManager = new DefaultDependencyManager(
-                repository,
+                defaultRepository,
                 DownloadProviders.getDownloadProvider(),
                 new DefaultCacheRepository());
 
-        GameBuilder builder = dependencyManager.gameBuilder()
-                .name(id)
-                .gameVersion(instance.gameVersion);
-        if (!loader.isBlank() && instance.modloaderVersion != null
+        GameBuilder builder = dependencyManager.newGameBuilder(new GameInstanceID(id))
+                .component(GameComponentType.GAME, instance.gameVersion);
+        if (loaderType != null && instance.modloaderVersion != null
                 && !instance.modloaderVersion.isBlank()) {
-            builder.version(loader, instance.modloaderVersion);
+            builder.component(loaderType, instance.modloaderVersion);
         }
 
         Task<?> task = builder.buildAsync();

@@ -11,16 +11,15 @@ package com.hibernet.flfmod.nsum.bridge;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.hibernet.flfmod.api.task.FLFTasks;
 import javafx.application.Platform;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jackhuang.hmcl.task.FileDownloadTask;
 import org.jackhuang.hmcl.task.Task;
-import org.jackhuang.hmcl.task.TaskExecutor;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane;
-import org.jackhuang.hmcl.util.TaskCancellationAction;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -151,9 +150,7 @@ public final class NSumBridgeUpdater {
                         .setName("下载 NSUM Bridge " + info.version());
 
         Task<Void> task = download.thenComposeAsync(() -> applyTask(staging, info));
-        TaskExecutor executor = task.executor();
-        Controllers.taskDialog(executor, "更新 NSUM Bridge " + info.version(),
-                TaskCancellationAction.NORMAL);
+        FLFTasks.submit(task, "更新 NSUM Bridge " + info.version());
     }
 
     private static Task<Void> applyTask(Path staging, UpdateInfo info) {

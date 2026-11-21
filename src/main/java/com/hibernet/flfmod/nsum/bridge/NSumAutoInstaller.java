@@ -9,6 +9,7 @@
  */
 package com.hibernet.flfmod.nsum.bridge;
 
+import com.hibernet.flfmod.api.task.FLFTasks;
 import javafx.application.Platform;
 import net.fabricmc.loader.api.FabricLoader;
 import org.apache.logging.log4j.LogManager;
@@ -17,9 +18,7 @@ import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane;
 import org.jackhuang.hmcl.task.FileDownloadTask;
 import org.jackhuang.hmcl.task.Task;
-import org.jackhuang.hmcl.task.TaskExecutor;
 import org.jackhuang.hmcl.task.TaskListener;
-import org.jackhuang.hmcl.util.TaskCancellationAction;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -127,12 +126,9 @@ public final class NSumAutoInstaller {
         Task<Void> install = installTask(zip, version);
         Task<Void> task = download.thenComposeAsync(install);
 
-        TaskExecutor executor = task.executor();
-        Controllers.taskDialog(executor, (update ? "更新" : "安装") + " NSUM Runtime " + version,
-                TaskCancellationAction.NORMAL);
-        executor.addTaskListener(new TaskListener() {
+        TaskListener listener = new TaskListener() {
             @Override
-            public void onStop(boolean success, TaskExecutor taskExecutor) {
+            public void onStop(boolean success, org.jackhuang.hmcl.task.TaskExecutor taskExecutor) {
                 if (success) {
                     return;
                 }
@@ -146,8 +142,8 @@ public final class NSumAutoInstaller {
                                 + "\n可删除该文件后重试；或手动下载放到 .hmcl/nsum/downloads/ 后点「从 downloads 安装」。",
                         "NSUM", MessageDialogPane.MessageType.ERROR).ok(null).build()));
             }
-        });
-        executor.start();
+        };
+        FLFTasks.submit(task, (update ? "更新" : "安装") + " NSUM Runtime " + version, listener);
     }
 
     /// 安装任务：把下载好的 zip 交给 HIC CLI 安装器，HIC 的 progress 事件映射到任务进度。

@@ -22,15 +22,16 @@ import org.jackhuang.hmcl.modpack.Modpack;
 import org.jackhuang.hmcl.modpack.ModpackProvider;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.util.io.CompressingUtils;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Enumeration;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -57,23 +58,27 @@ public final class NSumModpackProvider implements ModpackProvider {
     }
 
     @Override
-    public Task<?> createCompletionTask(DefaultDependencyManager dependencyManager, String version) {
+    public Task<?> createCompletionTask(DefaultDependencyManager dependencyManager,
+                                        org.jackhuang.hmcl.game.DefaultGameInstance instance) {
         // 每次启动都会进入该阶段：先完成三元组校验/切换与内容同步，再进入原生启动步骤
-        return new NSumSyncTask(dependencyManager, version);
+        return new NSumSyncTask(dependencyManager, instance.getId().id());
     }
 
     @Override
-    public Task<?> createUpdateTask(DefaultDependencyManager dependencyManager, String name,
-                                    Path zipFile, Modpack modpack) throws MismatchedModpackTypeException {
+    public Task<?> createUpdateTask(DefaultDependencyManager dependencyManager,
+                                    org.jackhuang.hmcl.game.DefaultGameInstance instance,
+                                    Path zipFile, Modpack modpack,
+                                    @Nullable Set<String> excludedFiles)
+            throws MismatchedModpackTypeException {
         if (!(modpack instanceof NSumModpack nsum)) {
             throw new MismatchedModpackTypeException(TYPE,
                     modpack.getManifest() == null ? "unknown" : modpack.getManifest().getProvider().getName());
         }
-        return nsum.getInstallTask(dependencyManager, zipFile, name, null);
+        return nsum.getInstallTask(dependencyManager, zipFile, instance.getId(), null, excludedFiles);
     }
 
     @Override
-    public Modpack readManifest(ZipArchiveReader zipFile, Path file, Charset encoding) throws IOException {
+    public Modpack readManifest(ZipArchiveReader zipFile, Path file) throws IOException {
         String json;
         try {
             json = CompressingUtils.readTextZipEntry(zipFile, MANIFEST_NAME);
@@ -87,7 +92,6 @@ public final class NSumModpackProvider implements ModpackProvider {
         JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
 
         NSumModpack modpack = new NSumModpack();
-        modpack.setEncoding(encoding);
         modpack.setName(optString(obj, "name", "NSUM"));
         modpack.setAuthor(optString(obj, "author", ""));
         modpack.setVersion(optString(obj, "version", ""));
@@ -149,11 +153,13 @@ public final class NSumModpackProvider implements ModpackProvider {
 
         @Override
         public Task<?> getInstallTask(DefaultDependencyManager dependencyManager, Path zipFile,
-                                      String name, String iconUrl) {
+                                      org.jackhuang.hmcl.game.GameInstanceID instanceId,
+                                      String iconUrl, @Nullable Set<String> excludedFiles) {
             // 实例名带「（NSUM）」后缀，便于在 HMCL 实例列表里区分
-            String displayName = NSumInstanceVisuals.decorateName(name);
+            String displayName = NSumInstanceVisuals.decorateName(instanceId.id());
             return Task.runAsync("NSUM: 安装整合包 " + displayName, () -> {
-                Path versionRoot = dependencyManager.getGameRepository().getVersionRoot(displayName);
+                Path versionRoot = dependencyManager.getGameRepository()
+                        .getInstanceRoot(new org.jackhuang.hmcl.game.GameInstanceID(displayName));
                 Files.createDirectories(versionRoot);
 
                 NSumInstance instance = this.instance != null ? this.instance : new NSumInstance();

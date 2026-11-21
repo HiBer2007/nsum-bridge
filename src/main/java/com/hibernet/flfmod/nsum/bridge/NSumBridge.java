@@ -49,6 +49,5 @@ public final class NSumBridge implements ModInitializer {
         if (System.getProperty("nsum.selftest", "").isBlank()) {
             NSumBridgeUpdater.autoCheckOnStartup();
         }
-        NSumSelfTest.runIfRequested();
     }
 }

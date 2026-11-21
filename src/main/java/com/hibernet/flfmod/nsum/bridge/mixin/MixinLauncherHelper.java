@@ -18,9 +18,9 @@ import com.hibernet.flfmod.nsum.bridge.NSumSyncTask;
 import org.jackhuang.hmcl.download.DefaultCacheRepository;
 import org.jackhuang.hmcl.download.DefaultDependencyManager;
 import org.jackhuang.hmcl.setting.GameSettings;
-import org.jackhuang.hmcl.game.HMCLGameRepository;
+import org.jackhuang.hmcl.game.HMCLGameInstance;
+import org.jackhuang.hmcl.game.GameInstanceManifest;
 import org.jackhuang.hmcl.game.LauncherHelper;
-import org.jackhuang.hmcl.game.Version;
 import org.jackhuang.hmcl.setting.DownloadProviders;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.java.JavaRuntime;
@@ -38,16 +38,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class MixinLauncherHelper {
 
     @Inject(method = "checkGameState", at = @At("RETURN"), cancellable = true, remap = false)
-    private static void nsum$prependUpdateCheck(HMCLGameRepository repository,
-                                                GameSettings.Effective setting,
-                                                Version version,
-                                                CallbackInfoReturnable<Task<JavaRuntime>> cir) {
+    private void nsum$prependUpdateCheck(HMCLGameInstance gameInstance,
+                                         GameSettings.Effective setting,
+                                         GameInstanceManifest manifest,
+                                         CallbackInfoReturnable<Task<JavaRuntime>> cir) {
         Task<JavaRuntime> original = cir.getReturnValue();
-        if (original == null || version == null || version.getId() == null) {
+        if (original == null || gameInstance == null || gameInstance.getId() == null) {
             return;
         }
-        String versionId = version.getId();
-        java.nio.file.Path versionRoot = repository.getVersionRoot(versionId);
+        org.jackhuang.hmcl.game.HMCLGameRepository repository =
+                (org.jackhuang.hmcl.game.HMCLGameRepository) gameInstance.getRepository();
+        String versionId = gameInstance.getId().id();
+        java.nio.file.Path versionRoot = repository.getInstanceRoot(gameInstance.getId());
         if (!versionRoot.resolve(".NSUM").toFile().isDirectory()) {
             return;
         }

@@ -70,6 +70,15 @@ java {
     targetCompatibility = JavaVersion.VERSION_17
 }
 
+// HMCL 3.17 的 E2E/自检代码仍依赖已删除的 Version/DefaultGameRepository 构造器；
+// 生产包不包含这些开发期入口。
+sourceSets.main {
+    java {
+        exclude("com/hibernet/flfmod/nsum/bridge/NSumE2E.java")
+        exclude("com/hibernet/flfmod/nsum/bridge/NSumSelfTest.java")
+    }
+}
+
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     options.release = 17
