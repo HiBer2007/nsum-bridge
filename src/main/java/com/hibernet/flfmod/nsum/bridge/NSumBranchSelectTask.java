@@ -9,11 +9,10 @@
  */
 package com.hibernet.flfmod.nsum.bridge;
 
+import com.hibernet.flfmod.api.game.FLFGameRepository;
 import javafx.application.Platform;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jackhuang.hmcl.download.DefaultDependencyManager;
-import org.jackhuang.hmcl.game.DefaultGameRepository;
 import org.jackhuang.hmcl.task.Task;
 
 import java.nio.file.Path;
@@ -32,11 +31,11 @@ public final class NSumBranchSelectTask extends Task<Void> {
 
     private static final Logger LOG = LogManager.getLogger(NSumBranchSelectTask.class);
 
-    private final DefaultDependencyManager dependencyManager;
+    private final FLFGameRepository repository;
     private final String versionId;
 
-    public NSumBranchSelectTask(DefaultDependencyManager dependencyManager, String versionId) {
-        this.dependencyManager = dependencyManager;
+    public NSumBranchSelectTask(FLFGameRepository repository, String versionId) {
+        this.repository = repository;
         this.versionId = versionId;
         setName("NSUM 选择分支");
         setStage("NSUM：选择启动分支");
@@ -44,8 +43,7 @@ public final class NSumBranchSelectTask extends Task<Void> {
 
     @Override
     public void execute() throws Exception {
-        DefaultGameRepository repository = dependencyManager.getGameRepository();
-        Path versionRoot = repository.getInstanceRoot(new org.jackhuang.hmcl.game.GameInstanceID(versionId));
+        Path versionRoot = repository.instanceRoot(versionId);
         Optional<NSumInstance> read = NSumInstance.read(versionRoot);
         if (read.isEmpty()) {
             return;

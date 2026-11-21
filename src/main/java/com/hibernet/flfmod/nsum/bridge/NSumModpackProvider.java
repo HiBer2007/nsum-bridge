@@ -1,6 +1,6 @@
 /*
  * NSUM Bridge — HMCL integration for NeoServerUpdateModpack
- * Copyright (C) 2026 HiBerNET
+ * Copyright (C) 2026 HiBERNET
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -13,16 +13,16 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import kala.compress.archivers.zip.ZipArchiveReader;
+import com.hibernet.flfmod.api.game.FLFGameRepository;
+import com.hibernet.flfmod.api.game.FLFGames;
+import com.hibernet.flfmod.api.modpack.FLFModpack;
+import com.hibernet.flfmod.api.modpack.FLFModpackArchive;
+import com.hibernet.flfmod.api.modpack.FLFModpackInstallContext;
+import com.hibernet.flfmod.api.modpack.FLFModpackManifest;
+import com.hibernet.flfmod.api.modpack.FLFModpackProvider;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jackhuang.hmcl.download.DefaultDependencyManager;
-import org.jackhuang.hmcl.modpack.MismatchedModpackTypeException;
-import org.jackhuang.hmcl.modpack.Modpack;
-import org.jackhuang.hmcl.modpack.ModpackProvider;
 import org.jackhuang.hmcl.task.Task;
-import org.jackhuang.hmcl.util.io.CompressingUtils;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -35,11 +35,8 @@ import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-/// `nsum` 整合包类型：把「服务端仓库」封装成一个可导入的 HMCL 整合包。
-///
-/// <p>包内只有清单 `nsum.modpack.json`（+ 可选 `overrides/`）。安装时创建实例目录、
-/// 写入 `.NSUM/instance.json`，内容本身由 NSUM Runtime 在每次启动时同步。</p>
-public final class NSumModpackProvider implements ModpackProvider {
+/// `nsum` 整合包类型：把服务端仓库封装成可导入的整合包。
+public final class NSumModpackProvider implements FLFModpackProvider {
 
     public static final NSumModpackProvider INSTANCE = new NSumModpackProvider();
     public static final String TYPE = "nsum";
@@ -53,74 +50,70 @@ public final class NSumModpackProvider implements ModpackProvider {
     }
 
     @Override
-    public String getName() {
+    public String name() {
         return TYPE;
     }
 
     @Override
-    public Task<?> createCompletionTask(DefaultDependencyManager dependencyManager,
-                                        org.jackhuang.hmcl.game.DefaultGameInstance instance) {
-        // 每次启动都会进入该阶段：先完成三元组校验/切换与内容同步，再进入原生启动步骤
-        return new NSumSyncTask(dependencyManager, instance.getId().id());
-    }
-
-    @Override
-    public Task<?> createUpdateTask(DefaultDependencyManager dependencyManager,
-                                    org.jackhuang.hmcl.game.DefaultGameInstance instance,
-                                    Path zipFile, Modpack modpack,
-                                    @Nullable Set<String> excludedFiles)
-            throws MismatchedModpackTypeException {
-        if (!(modpack instanceof NSumModpack nsum)) {
-            throw new MismatchedModpackTypeException(TYPE,
-                    modpack.getManifest() == null ? "unknown" : modpack.getManifest().getProvider().getName());
-        }
-        return nsum.getInstallTask(dependencyManager, zipFile, instance.getId(), null, excludedFiles);
-    }
-
-    @Override
-    public Modpack readManifest(ZipArchiveReader zipFile, Path file) throws IOException {
+    public FLFModpack readManifest(FLFModpackArchive archive, Path file) throws IOException {
         String json;
         try {
-            json = CompressingUtils.readTextZipEntry(zipFile, MANIFEST_NAME);
+            json = archive.readText(MANIFEST_NAME);
         } catch (IOException e) {
             try {
-                json = CompressingUtils.readTextZipEntry(zipFile, LEGACY_MANIFEST_NAME);
+                json = archive.readText(LEGACY_MANIFEST_NAME);
             } catch (IOException ignored) {
-                return null; // 不是 nsum 包，交给其它 provider
+                return null;
             }
         }
         JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
 
         NSumModpack modpack = new NSumModpack();
-        modpack.setName(optString(obj, "name", "NSUM"));
-        modpack.setAuthor(optString(obj, "author", ""));
-        modpack.setVersion(optString(obj, "version", ""));
-        modpack.setGameVersion(optString(obj, "gameVersion", ""));
-        modpack.setDescription(optString(obj, "description", ""));
-        modpack.setManifest(NSumModpackManifest.INSTANCE);
-        modpack.setManifestJson(json);
+        modpack.name = optString(obj, "name", "NSUM");
+        modpack.author = optString(obj, "author", "");
+        modpack.version = optString(obj, "version", "");
+        modpack.gameVersion = optString(obj, "gameVersion", "");
+        modpack.description = optString(obj, "description", "");
+        modpack.manifest = NSumModpackManifest.INSTANCE;
+        modpack.manifestJson = json;
 
         JsonObject instanceObj = obj.has("instance") && obj.get("instance").isJsonObject()
                 ? obj.getAsJsonObject("instance")
                 : new JsonObject();
         NSumInstance instance = new NSumInstance();
-        instance.name = modpack.getName();
+        instance.name = modpack.name;
         instance.repo = optString(instanceObj, "repo", "");
         instance.branch = optString(instanceObj, "branch", "base");
         instance.gitBranch = optString(instanceObj, "gitBranch", "");
         instance.branchType = optString(instanceObj, "branchType", "universal");
         instance.core = optString(obj, "core", "");
-        instance.gameVersion = modpack.getGameVersion();
+        instance.gameVersion = modpack.gameVersion;
         instance.modloader = optString(obj, "modloader", "fabric");
         instance.modloaderVersion = optString(obj, "modloaderVersion", "");
         if (obj.has("runtime") && obj.get("runtime").isJsonObject()) {
             instance.minRuntimeVersion = optString(obj.getAsJsonObject("runtime"), "minVersion", "");
         }
-        modpack.setInstance(instance);
+        modpack.instance = instance;
 
         LOG.info("[NSUM] 识别整合包: name={}, version={}, repo={}, branch={}",
-                modpack.getName(), modpack.getVersion(), instance.repo, instance.branch);
+                modpack.name, modpack.version, instance.repo, instance.branch);
         return modpack;
+    }
+
+    @Override
+    public Object createCompletionTask(String instanceId, FLFGameRepository repository) {
+        return new NSumSyncTask(repository, instanceId);
+    }
+
+    @Override
+    public Object createUpdateTask(String instanceId, FLFGameRepository repository,
+                                   Path archive, FLFModpack modpack, Set<String> excludedFiles) {
+        if (modpack instanceof NSumModpack nsum) {
+            return Task.runAsync("NSUM: 更新整合包 " + instanceId,
+                    () -> nsum.install(new FLFModpackInstallContext(repository, instanceId,
+                            repository.instanceRoot(instanceId), archive, excludedFiles)));
+        }
+        return null;
     }
 
     static String optString(JsonObject obj, String key, String fallback) {
@@ -128,80 +121,82 @@ public final class NSumModpackProvider implements ModpackProvider {
     }
 
     /// `nsum` 整合包模型。
-    public static final class NSumModpack extends Modpack {
+    public static final class NSumModpack implements FLFModpack {
 
         private static final Logger LOG = LogManager.getLogger(NSumModpack.class);
 
+        private String name = "NSUM";
+        private String author = "";
+        private String version = "";
+        private String gameVersion = "";
+        private String description = "";
+        private FLFModpackManifest manifest = NSumModpackManifest.INSTANCE;
         private NSumInstance instance;
         private String manifestJson = "{}";
 
-        public NSumInstance getInstance() {
-            return instance;
-        }
-
-        public void setInstance(NSumInstance instance) {
-            this.instance = instance;
-        }
-
-        public String getManifestJson() {
-            return manifestJson;
-        }
-
-        public void setManifestJson(String manifestJson) {
-            this.manifestJson = manifestJson;
+        @Override
+        public String name() {
+            return name;
         }
 
         @Override
-        public Task<?> getInstallTask(DefaultDependencyManager dependencyManager, Path zipFile,
-                                      org.jackhuang.hmcl.game.GameInstanceID instanceId,
-                                      String iconUrl, @Nullable Set<String> excludedFiles) {
-            // 实例名带「（NSUM）」后缀，便于在 HMCL 实例列表里区分
-            String displayName = NSumInstanceVisuals.decorateName(instanceId.id());
-            return Task.runAsync("NSUM: 安装整合包 " + displayName, () -> {
-                Path versionRoot = dependencyManager.getGameRepository()
-                        .getInstanceRoot(new org.jackhuang.hmcl.game.GameInstanceID(displayName));
-                Files.createDirectories(versionRoot);
+        public String author() {
+            return author;
+        }
 
-                NSumInstance instance = this.instance != null ? this.instance : new NSumInstance();
-                if (instance.name == null || instance.name.isBlank()) {
-                    instance.name = displayName;
+        @Override
+        public String version() {
+            return version;
+        }
+
+        @Override
+        public String gameVersion() {
+            return gameVersion;
+        }
+
+        @Override
+        public String description() {
+            return description;
+        }
+
+        @Override
+        public FLFModpackManifest manifest() {
+            return manifest;
+        }
+
+        public NSumInstance instance() {
+            return instance;
+        }
+
+        public String manifestJson() {
+            return manifestJson;
+        }
+
+        @Override
+        public void install(FLFModpackInstallContext context) throws Exception {
+            Path versionRoot = context.instanceRoot();
+            Files.createDirectories(versionRoot);
+
+            NSumInstance instance = this.instance != null ? this.instance : new NSumInstance();
+            if (instance.name == null || instance.name.isBlank()) {
+                instance.name = NSumInstanceVisuals.decorateName(context.instanceId());
+            }
+            instance.write(versionRoot);
+            NSumInstanceVisuals.ensureIcon(versionRoot);
+
+            NSumGameInstaller.ensure(context.repository(), context.instanceId(), instance);
+            int extracted = extractOverrides(context.archive(), versionRoot);
+            LOG.info("[NSUM] 实例已创建: {} (overrides={} 个文件, repo={})",
+                    versionRoot, extracted, instance.repo);
+
+            if (NSumRuntime.status().installed()) {
+                NSumRuntime.SyncResult result = NSumRuntime.sync(instance, versionRoot);
+                if (!result.success()) {
+                    LOG.warn("[NSUM] 首次同步失败: {}", result.message());
                 }
-                instance.write(versionRoot);
-                NSumInstanceVisuals.ensureIcon(versionRoot);
-
-                // 游戏本体/库/加载器：复用 HMCL 安装器（会生成 <id>.json），再解 overrides / 同步内容
-                if (dependencyManager.getGameRepository()
-                        instanceof org.jackhuang.hmcl.game.DefaultGameRepository) {
-                    var repository = (org.jackhuang.hmcl.game.DefaultGameRepository)
-                            dependencyManager.getGameRepository();
-                    try {
-                        NSumGameInstaller.ensure(repository, displayName, instance);
-                    } catch (Exception e) {
-                        LOG.error("[NSUM] 安装游戏/加载器失败: {}", e.toString(), e);
-                        throw e;
-                    }
-                }
-                if (!Files.isRegularFile(versionRoot.resolve(displayName + ".json"))) {
-                    LOG.warn("[NSUM] 实例缺少版本描述 {}.json（游戏未安装完成？），HMCL 实例列表可能不显示该实例",
-                            displayName);
-                }
-
-                int extracted = extractOverrides(zipFile, versionRoot);
-                LOG.info("[NSUM] 实例已创建: {} (overrides={} 个文件, repo={})",
-                        versionRoot, extracted, instance.repo);
-
-                // TODO(installer): 由 NSumGameInstaller 依 manifest 安装原版 + 加载器（含类型切换），
-                // 见 PLAN 七点五 §6；当前只建目录/写标记/解 overrides 并同步内容。
-
-                if (NSumRuntime.status().installed()) {
-                    NSumRuntime.SyncResult result = NSumRuntime.sync(instance, versionRoot);
-                    if (!result.success()) {
-                        LOG.warn("[NSUM] 首次同步失败: {}", result.message());
-                    }
-                } else {
-                    LOG.warn("[NSUM] Runtime 未安装，实例只写入了标记；请在 NSUM 页面安装 Runtime 后再启动");
-                }
-            });
+            } else {
+                LOG.warn("[NSUM] Runtime 未安装，实例只写入了标记；请在 NSUM 页面安装 Runtime 后再启动");
+            }
         }
 
         private int extractOverrides(Path zipFile, Path versionRoot) throws IOException {
@@ -220,7 +215,7 @@ public final class NSumModpackProvider implements ModpackProvider {
                     }
                     Path destination = versionRoot.resolve(relative).normalize();
                     if (!destination.startsWith(versionRoot)) {
-                        continue; // 防 zip slip
+                        continue;
                     }
                     Files.createDirectories(destination.getParent());
                     try (InputStream in = zip.getInputStream(entry)) {

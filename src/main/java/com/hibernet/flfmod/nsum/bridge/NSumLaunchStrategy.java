@@ -13,11 +13,6 @@ import com.hibernet.flfmod.api.launch.LaunchContext;
 import com.hibernet.flfmod.api.launch.LaunchStrategy;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jackhuang.hmcl.download.DefaultCacheRepository;
-import org.jackhuang.hmcl.download.DefaultDependencyManager;
-import org.jackhuang.hmcl.game.DefaultGameRepository;
-import org.jackhuang.hmcl.setting.DownloadProviders;
-import org.jackhuang.hmcl.util.platform.ManagedProcess;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -57,7 +52,7 @@ public final class NSumLaunchStrategy implements LaunchStrategy {
     }
 
     @Override
-    public ManagedProcess launch(LaunchContext context) throws Exception {
+    public Object launch(LaunchContext context) throws Exception {
         Path versionRoot = versionRoot(context);
         Optional<NSumInstance> instance = versionRoot == null
                 ? Optional.empty()
@@ -73,12 +68,10 @@ public final class NSumLaunchStrategy implements LaunchStrategy {
 
         // 正常路径：completion task 已完成同步；这里只兜底没有 modpack.json 的实例
         boolean completionTaskRuns = Files.isRegularFile(versionRoot.resolve("modpack.json"));
-        if (!completionTaskRuns
-                && context.instance() != null
-                && context.instance().getRepository() instanceof org.jackhuang.hmcl.game.DefaultGameRepository repository) {
+        if (!completionTaskRuns && context.repository() != null) {
             LOG.info("[NSUM] 实例缺少 modpack.json，启动策略内执行兜底同步");
             try {
-                NSumGameInstaller.ensure(repository, context.instance().getId().id(), instance.get());
+                NSumGameInstaller.ensure(context.repository(), context.instanceId(), instance.get());
                 NSumRuntime.SyncResult result = NSumRuntime.sync(
                         instance.get(), versionRoot, null,
                         () -> Thread.currentThread().isInterrupted() || config.isLaunchOnSyncFailure() && false);
@@ -106,13 +99,9 @@ public final class NSumLaunchStrategy implements LaunchStrategy {
     }
 
     private static Path versionRoot(LaunchContext context) {
-        if (context.instance() == null) {
+        if (context.instanceId() == null || context.instanceId().isBlank()) {
             return null;
         }
-        String id = context.instance().getId().id();
-        if (id == null || id.isBlank()) {
-            return null;
-        }
-        return context.instance().getInstanceRoot();
+        return context.instanceRoot();
     }
 }

@@ -9,10 +9,9 @@
  */
 package com.hibernet.flfmod.nsum.bridge;
 
+import com.hibernet.flfmod.api.game.FLFGameRepository;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jackhuang.hmcl.download.DefaultDependencyManager;
-import org.jackhuang.hmcl.game.DefaultGameRepository;
 import org.jackhuang.hmcl.task.Task;
 
 import java.io.IOException;
@@ -37,11 +36,11 @@ public final class NSumSyncTask extends Task<Void> {
     private static final Pattern STEP = Pattern.compile("\\[([A-Za-z_]+)\\s+(\\d+)%]\\s*(.*)");
     private static final Pattern BAR = Pattern.compile("(\\d+)%\\s*\\|\\s*([^\\[]*)");
 
-    private final DefaultDependencyManager dependencyManager;
+    private final FLFGameRepository repository;
     private final String versionId;
 
-    public NSumSyncTask(DefaultDependencyManager dependencyManager, String versionId) {
-        this.dependencyManager = dependencyManager;
+    public NSumSyncTask(FLFGameRepository repository, String versionId) {
+        this.repository = repository;
         this.versionId = versionId;
         setName("NSUM 更新检查");
         setStage("NSUM 更新检查");
@@ -49,8 +48,7 @@ public final class NSumSyncTask extends Task<Void> {
 
     @Override
     public void execute() throws Exception {
-        DefaultGameRepository repository = dependencyManager.getGameRepository();
-        Path versionRoot = repository.getInstanceRoot(new org.jackhuang.hmcl.game.GameInstanceID(versionId));
+        Path versionRoot = repository.instanceRoot(versionId);
         Optional<NSumInstance> read = NSumInstance.read(versionRoot);
         if (read.isEmpty()) {
             LOG.info("[NSUM] 实例标记缺失，跳过同步: {}", versionRoot);

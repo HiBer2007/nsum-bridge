@@ -9,19 +9,17 @@
  */
 package com.hibernet.flfmod.nsum.bridge.mixin;
 
+import com.hibernet.flfmod.api.game.FLFGames;
 import com.hibernet.flfmod.nsum.bridge.NSumBranchSelection;
 import com.hibernet.flfmod.nsum.bridge.NSumBranchSelectTask;
 import com.hibernet.flfmod.nsum.bridge.NSumBranchWizard;
 import com.hibernet.flfmod.nsum.bridge.NSumConfig;
 import com.hibernet.flfmod.nsum.bridge.NSumInstance;
 import com.hibernet.flfmod.nsum.bridge.NSumSyncTask;
-import org.jackhuang.hmcl.download.DefaultCacheRepository;
-import org.jackhuang.hmcl.download.DefaultDependencyManager;
 import org.jackhuang.hmcl.setting.GameSettings;
 import org.jackhuang.hmcl.game.HMCLGameInstance;
 import org.jackhuang.hmcl.game.GameInstanceManifest;
 import org.jackhuang.hmcl.game.LauncherHelper;
-import org.jackhuang.hmcl.setting.DownloadProviders;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.java.JavaRuntime;
 import org.spongepowered.asm.mixin.Mixin;
@@ -53,18 +51,14 @@ public abstract class MixinLauncherHelper {
         if (!versionRoot.resolve(".NSUM").toFile().isDirectory()) {
             return;
         }
-        DefaultDependencyManager dependencyManager = new DefaultDependencyManager(
-                repository,
-                DownloadProviders.getDownloadProvider(),
-                new DefaultCacheRepository());
         boolean wizard = NSumInstance.read(versionRoot).isPresent()
                 && NSumConfig.load().isBranchWizard();
         Task<Void> first = wizard
-                ? new NSumBranchSelectTask(dependencyManager, versionId)
-                : new NSumSyncTask(dependencyManager, versionId);
+                ? new NSumBranchSelectTask(FLFGames.wrap(repository), versionId)
+                : new NSumSyncTask(FLFGames.wrap(repository), versionId);
         Task<JavaRuntime> wrapped = first
                 .withStage("NSUM 更新检查")
-                .thenComposeAsync(ignored -> wizard ? new NSumSyncTask(dependencyManager, versionId) : null)
+                .thenComposeAsync(ignored -> wizard ? new NSumSyncTask(FLFGames.wrap(repository), versionId) : null)
                 .thenComposeAsync(ignored -> original);
         cir.setReturnValue(wrapped);
     }
