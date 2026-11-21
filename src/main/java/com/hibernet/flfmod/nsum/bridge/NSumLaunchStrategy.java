@@ -10,6 +10,7 @@
 package com.hibernet.flfmod.nsum.bridge;
 
 import com.hibernet.flfmod.api.launch.LaunchContext;
+import com.hibernet.flfmod.api.launch.LaunchEnvironment;
 import com.hibernet.flfmod.api.launch.LaunchStrategy;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -35,6 +36,11 @@ public final class NSumLaunchStrategy implements LaunchStrategy {
     @Override
     public String name() {
         return NAME;
+    }
+
+    @Override
+    public void inject(LaunchEnvironment environment) {
+        // NSUM 通过更新后的完成阶段注入内容，不需要额外 JVM/环境参数。
     }
 
     @Override

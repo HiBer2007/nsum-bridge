@@ -18,7 +18,7 @@
     "hmcl": ">=3.17.2",
     "flf-api": ">=2.2.0",
     "flf-api-modpack": ">=1.0.0",
-    "flf-api-launch": ">=1.0.0",
-    "flf-ui-api": ">=2.3.0"
+    "flf-api-launch": ">=1.2.0",
+    "flf-ui-api": ">=2.4.0"
   }
 }
