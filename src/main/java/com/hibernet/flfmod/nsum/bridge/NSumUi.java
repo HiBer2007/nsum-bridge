@@ -9,6 +9,7 @@
  */
 package com.hibernet.flfmod.nsum.bridge;
 
+import com.hibernet.flfmod.api.FLFDialogs;
 import com.hibernet.flfmod.uiapi.FLFComponents;
 import com.hibernet.flfmod.uiapi.FLFHMCLUIApi;
 import com.hibernet.flfmod.uiapi.FLFHMCLUIApi.SettingsArea;
@@ -18,7 +19,6 @@ import javafx.scene.Node;
 import javafx.scene.control.Label;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.SVG;
 
 import java.nio.file.Files;
@@ -68,18 +68,18 @@ public final class NSumUi {
                 NSumBridgeUpdater.UpdateInfo info = NSumBridgeUpdater.check();
                 javafx.application.Platform.runLater(() -> {
                     if (info == null) {
-                        org.jackhuang.hmcl.ui.Controllers.dialog(
+                        dialog(
                                 "当前已是最新版本（" + NSumBridgeUpdater.currentVersion() + "）。",
                                 "NSUM Bridge",
-                                org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.INFO);
+                                FLFDialogs.Type.INFO);
                     } else {
                         NSumBridgeUpdater.prompt(info);
                     }
                 });
             } catch (Throwable t) {
-                javafx.application.Platform.runLater(() -> org.jackhuang.hmcl.ui.Controllers.dialog(
+                javafx.application.Platform.runLater(() -> dialog(
                         "检查更新失败：" + t.getMessage(), "NSUM Bridge",
-                        org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.ERROR));
+                        FLFDialogs.Type.ERROR));
             }
         })));
         return FLFComponents.card(children.toArray(Node[]::new));
@@ -105,8 +105,8 @@ public final class NSumUi {
                 + (NSumEditor.available() ? "已包含（NeoWorkspaceEditor.exe）" : "未安装（请重新安装 Runtime）")));
         children.add(FLFComponents.button("打开 NSUM 编辑器", () -> {
             if (!NSumEditor.open(NSumPaths.nsumDir().toString())) {
-                Controllers.dialog("无法启动编辑器：Runtime 中缺少 NeoWorkspaceEditor.exe",
-                        "NSUM", org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.WARNING);
+                dialog("无法启动编辑器：Runtime 中缺少 NeoWorkspaceEditor.exe",
+                        "NSUM", FLFDialogs.Type.WARNING);
             }
         }));
         return FLFComponents.card(children.toArray(Node[]::new));
@@ -126,8 +126,8 @@ public final class NSumUi {
             try {
                 var project = NSumMetadata.latest(NSumMetadata.TYPE_NSUM);
                 if (project == null || project.latest().isBlank()) {
-                    Platform.runLater(() -> Controllers.dialog("无法获取 NSUM 元数据，请检查网络或 metadata.hibernet.top",
-                            "NSUM", org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.ERROR));
+                    Platform.runLater(() -> dialog("无法获取 NSUM 元数据，请检查网络或 metadata.hibernet.top",
+                            "NSUM", FLFDialogs.Type.ERROR));
                     return;
                 }
                 Platform.runLater(() -> NSumAutoInstaller.promptInstall(project, project.latest(),
@@ -154,27 +154,27 @@ public final class NSumUi {
                 .orElse(null);
 
         if (source == null) {
-            Controllers.dialog(
+            dialog(
                     "找不到 NSUM Runtime 源目录。\n\n"
                             + "请把 NSUM 部署目录放到以下任一位置，或在 .hmcl/nsum/config.json "
                             + "的 runtimeSourceDir 里填写绝对路径：\n"
                             + "  - " + NSumPaths.hmclHome().resolve("nsum-runtime") + "\n"
                             + "  - " + NSumPaths.hmclHome().resolve("deploy"),
-                    "NSUM", org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.WARNING);
+                    "NSUM", FLFDialogs.Type.WARNING);
             return;
         }
 
         CompletableFuture.runAsync(() -> {
             try {
                 NSumRuntime.Status status = NSumRuntime.install(source, "local");
-                Platform.runLater(() -> Controllers.dialog(
+                Platform.runLater(() -> dialog(
                         "Runtime 已安装：" + status.dir() + "\n版本：" + status.version(),
-                        "NSUM", org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.SUCCESS));
+                        "NSUM", FLFDialogs.Type.SUCCESS));
             } catch (Exception e) {
                 LOG.error("[NSUM] 安装 Runtime 失败", e);
-                Platform.runLater(() -> Controllers.dialog(
+                Platform.runLater(() -> dialog(
                         "安装失败：" + e.getMessage(),
-                        "NSUM", org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.ERROR));
+                        "NSUM", FLFDialogs.Type.ERROR));
             }
         });
     }
@@ -199,8 +199,8 @@ public final class NSumUi {
                             "编辑 " + root.getFileName(),
                             () -> {
                                 if (!NSumEditor.open(instance.repo)) {
-                                    Controllers.dialog("无法启动编辑器：请先安装包含编辑器的 Runtime",
-                                            "NSUM", org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.WARNING);
+                                    dialog("无法启动编辑器：请先安装包含编辑器的 Runtime",
+                                            "NSUM", FLFDialogs.Type.WARNING);
                                 }
                             }));
                 });
@@ -214,13 +214,13 @@ public final class NSumUi {
     private static void syncOne(Path root, NSumInstance instance) {
         CompletableFuture.runAsync(() -> {
             NSumRuntime.SyncResult result = NSumRuntime.sync(instance, root);
-            Platform.runLater(() -> Controllers.dialog(
+            Platform.runLater(() -> dialog(
                     result.success()
                             ? "同步完成：" + root.getFileName()
                             : "同步失败：" + result.message(),
                     "NSUM", result.success()
-                            ? org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.SUCCESS
-                            : org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.ERROR));
+                            ? FLFDialogs.Type.SUCCESS
+                            : FLFDialogs.Type.ERROR));
         });
     }
 
@@ -243,10 +243,14 @@ public final class NSumUi {
             }
             int successCount = ok;
             int failedCount = failed;
-            Platform.runLater(() -> Controllers.dialog(
+            Platform.runLater(() -> dialog(
                     "同步完成：成功 " + successCount + "，失败 " + failedCount + "（详见 .hmcl/nsum/logs）",
-                    "NSUM", org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.INFO));
+                    "NSUM", FLFDialogs.Type.INFO));
         });
+    }
+
+    private static void dialog(String text, String title, FLFDialogs.Type type) {
+        FLFDialogs.show(type, title, text);
     }
 
     private static List<Path> scanInstances() {

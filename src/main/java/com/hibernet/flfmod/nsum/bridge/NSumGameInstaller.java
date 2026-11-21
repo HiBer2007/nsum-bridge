@@ -9,6 +9,7 @@
  */
 package com.hibernet.flfmod.nsum.bridge;
 
+import com.hibernet.flfmod.api.task.FLFTasks;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jackhuang.hmcl.download.DefaultCacheRepository;
@@ -20,8 +21,6 @@ import org.jackhuang.hmcl.game.GameInstanceID;
 import org.jackhuang.hmcl.game.GameRepository;
 import org.jackhuang.hmcl.setting.DownloadProviders;
 import org.jackhuang.hmcl.task.Task;
-import org.jackhuang.hmcl.task.TaskExecutor;
-import org.jackhuang.hmcl.task.TaskListener;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -29,9 +28,7 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 /// 游戏本体 / 依赖库 / 模组加载器的安装与切换。
@@ -166,33 +163,7 @@ public final class NSumGameInstaller {
 
     /// 同步执行 HMCL Task（安装链），超时即中止。
     private static void runBlocking(Task<?> task, int timeoutMinutes) throws Exception {
-        CountDownLatch latch = new CountDownLatch(1);
-        AtomicReference<Throwable> failure = new AtomicReference<>();
-
-        TaskExecutor executor = task.executor(new TaskListener() {
-            @Override
-            public void onFailed(Task<?> failedTask, Throwable throwable) {
-                failure.set(throwable);
-                LOG.warn("[NSUM] 安装任务失败: {}", throwable.toString());
-            }
-
-            @Override
-            public void onStop(boolean success, TaskExecutor taskExecutor) {
-                if (!success && failure.get() == null) {
-                    failure.set(new IllegalStateException("安装任务未成功完成"));
-                }
-                latch.countDown();
-            }
-        });
-        executor.start();
-
-        if (!latch.await(timeoutMinutes, TimeUnit.MINUTES)) {
-            executor.cancel();
-            throw new IOException("安装超时（" + timeoutMinutes + " 分钟）");
-        }
-        if (failure.get() != null) {
-            throw new IOException("安装失败: " + failure.get().getMessage(), failure.get());
-        }
+        FLFTasks.runBlocking(task, timeoutMinutes, TimeUnit.MINUTES);
     }
 
     private static boolean blank(String value) {

@@ -9,13 +9,13 @@
  */
 package com.hibernet.flfmod.nsum.bridge;
 
+import com.hibernet.flfmod.api.FLFDialogs;
 import com.hibernet.flfmod.api.task.FLFTasks;
 import javafx.application.Platform;
 import net.fabricmc.loader.api.FabricLoader;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jackhuang.hmcl.ui.Controllers;
-import org.jackhuang.hmcl.ui.construct.MessageDialogPane;
+
 import org.jackhuang.hmcl.task.FileDownloadTask;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.task.TaskListener;
@@ -73,7 +73,7 @@ public final class NSumAutoInstaller {
         String text = update
                 ? "当前版本：" + NSumRuntime.status().version() + "\n最新版本：" + version + "\n\n是否现在更新？"
                 : "该功能需要 NSUM Runtime（NSUM 的 CLI 运行时）。\n最新版本：" + version + "\n\n是否现在下载并安装？";
-        Controllers.confirm(text, title, MessageDialogPane.MessageType.QUESTION,
+        FLFDialogs.confirm(title, text,
                 // 确认弹窗的按钮回调里不同步开新弹窗：HMCL 关闭当前弹窗时会连带关闭新弹窗（表现为崩溃）
                 () -> doInstall(project, version, update),
                 () -> LOG.info("[NSUM] 用户取消 {} Runtime", update ? "更新" : "安装"));
@@ -88,8 +88,7 @@ public final class NSumAutoInstaller {
             }
         }
         if (entry == null || entry.downloadLink().isBlank()) {
-            Controllers.dialog("元数据里没有 " + version + " 的下载地址", "NSUM",
-                    MessageDialogPane.MessageType.ERROR);
+            FLFDialogs.error("NSUM", "元数据里没有 " + version + " 的下载地址");
             return;
         }
 
@@ -102,8 +101,7 @@ public final class NSumAutoInstaller {
         try {
             Files.createDirectories(zip.getParent());
         } catch (IOException e) {
-            Controllers.dialog("无法创建下载目录：" + e.getMessage(), "NSUM",
-                    MessageDialogPane.MessageType.ERROR);
+            FLFDialogs.error("NSUM", "无法创建下载目录：" + e.getMessage());
             return;
         }
 
@@ -136,11 +134,10 @@ public final class NSumAutoInstaller {
                 String message = error == null ? "未知错误"
                         : (error.getMessage() == null ? error.toString() : error.getMessage());
                 LOG.error("[NSUM] Runtime 安装任务失败: {}", message, error);
-                Platform.runLater(() -> Controllers.dialogLater(new MessageDialogPane.Builder(
+                Platform.runLater(() -> FLFDialogs.error("NSUM",
                         "安装 NSUM Runtime 失败：\n" + message
                                 + "\n\n下载文件：" + zip
-                                + "\n可删除该文件后重试；或手动下载放到 .hmcl/nsum/downloads/ 后点「从 downloads 安装」。",
-                        "NSUM", MessageDialogPane.MessageType.ERROR).ok(null).build()));
+                                + "\n可删除该文件后重试；或手动下载放到 .hmcl/nsum/downloads/ 后点「从 downloads 安装」。"));
             }
         };
         FLFTasks.submit(task, (update ? "更新" : "安装") + " NSUM Runtime " + version, listener);
@@ -181,23 +178,20 @@ public final class NSumAutoInstaller {
             Path dir = NSumPaths.nsumDir().resolve("downloads");
             Path archive = newestArchive(dir);
             if (archive == null) {
-                Platform.runLater(() -> Controllers.dialog(
+                Platform.runLater(() -> FLFDialogs.warning("NSUM",
                         "在 " + dir + " 里没有找到 .zip / .exe。\n"
-                                + "请把 NSUM Runtime 发布包放到该目录后重试。",
-                        "NSUM", MessageDialogPane.MessageType.WARNING));
+                                + "请把 NSUM Runtime 发布包放到该目录后重试。"));
                 return;
             }
             try {
                 Path sourceDir = unpack(archive);
                 NSumRuntime.Status status = NSumRuntime.install(sourceDir, "local:" + archive.getFileName());
-                Platform.runLater(() -> Controllers.dialog(
-                        "已从本地压缩包安装：" + archive.getFileName() + "\n目录：" + status.dir(),
-                        "NSUM", MessageDialogPane.MessageType.SUCCESS));
+                Platform.runLater(() -> FLFDialogs.success("NSUM",
+                        "已从本地压缩包安装：" + archive.getFileName() + "\n目录：" + status.dir()));
             } catch (Exception e) {
                 LOG.error("[NSUM] 本地压缩包安装失败", e);
-                Platform.runLater(() -> Controllers.dialog(
-                        "安装失败：" + e.getMessage(),
-                        "NSUM", MessageDialogPane.MessageType.ERROR));
+                Platform.runLater(() -> FLFDialogs.error("NSUM",
+                        "安装失败：" + e.getMessage()));
             }
         });
     }
@@ -343,10 +337,10 @@ public final class NSumAutoInstaller {
                 return;
             }
             var entry = project.latestEntry();
-            Platform.runLater(() -> Controllers.confirm(
+            Platform.runLater(() -> FLFDialogs.confirm(
+                    "NSUM Bridge 更新",
                     "NSUM Bridge 有新版本：\n当前：" + current + "\n最新："
                             + project.latest() + "\n\n是否下载？（保存到 .hmcl/nsum/update/ 后替换 mods 里的 jar）",
-                    "NSUM Bridge 更新", MessageDialogPane.MessageType.QUESTION,
                     () -> downloadBridgeUpdate(entry),
                     () -> LOG.info("[NSUM] 用户跳过 bridge 更新")));
         } catch (Throwable t) {
@@ -373,13 +367,12 @@ public final class NSumAutoInstaller {
                 if (response.statusCode() != 200) {
                     throw new IOException("HTTP " + response.statusCode());
                 }
-                Platform.runLater(() -> Controllers.dialog(
-                        "已下载到：\n" + target + "\n\n请退出 HMCL，用该 jar 替换 mods 里的 nsum-bridge-*.jar。",
-                        "NSUM Bridge 更新", MessageDialogPane.MessageType.SUCCESS));
+                Platform.runLater(() -> FLFDialogs.success("NSUM Bridge 更新",
+                        "已下载到：\n" + target + "\n\n请退出 HMCL，用该 jar 替换 mods 里的 nsum-bridge-*.jar。"));
             } catch (Exception e) {
                 LOG.error("[NSUM] bridge 更新下载失败", e);
-                Platform.runLater(() -> Controllers.dialog("下载失败：" + e.getMessage(),
-                        "NSUM Bridge 更新", MessageDialogPane.MessageType.ERROR));
+                Platform.runLater(() -> FLFDialogs.error("NSUM Bridge 更新",
+                        "下载失败：" + e.getMessage()));
             }
         });
     }
@@ -391,3 +384,4 @@ public final class NSumAutoInstaller {
                 .orElse("0.1.0");
     }
 }
+

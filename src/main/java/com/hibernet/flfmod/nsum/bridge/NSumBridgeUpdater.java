@@ -11,15 +11,13 @@ package com.hibernet.flfmod.nsum.bridge;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.hibernet.flfmod.api.FLFDialogs;
 import com.hibernet.flfmod.api.task.FLFTasks;
 import javafx.application.Platform;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jackhuang.hmcl.task.FileDownloadTask;
 import org.jackhuang.hmcl.task.Task;
-import org.jackhuang.hmcl.ui.Controllers;
-import org.jackhuang.hmcl.ui.FXUtils;
-import org.jackhuang.hmcl.ui.construct.MessageDialogPane;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -75,20 +73,23 @@ public final class NSumBridgeUpdater {
     /// 检查更新；无更新返回 null。
     public static UpdateInfo check() throws IOException, InterruptedException {
         NSumMetadata.Project project = NSumMetadata.latest(NSumMetadata.TYPE_BRIDGE);
-        if (project == null) {
+        if (project == null || project.latest().isBlank()) {
             return null;
         }
         String current = currentVersion();
-        String hmclVersion = org.jackhuang.hmcl.Metadata.VERSION;
-        NSumMetadata.Entry entry = project.latestCompatible(hmclVersion);
-        if (entry == null || entry.version().isBlank() || entry.downloadLink().isBlank()) {
+        if (NSumMetadata.compare(project.latest(), current) <= 0) {
             return null;
         }
-        if (NSumMetadata.compare(entry.version(), current) <= 0) {
-            return null;
+        for (NSumMetadata.Entry entry : project.entries()) {
+            if (project.latest().equals(entry.version())) {
+                if (entry.downloadLink().isBlank()) {
+                    return null;
+                }
+                return new UpdateInfo(entry.version(), entry.downloadLink(),
+                        entry.sha256(), entry.releasePage());
+            }
         }
-        return new UpdateInfo(entry.version(), entry.downloadLink(),
-                entry.sha256(), entry.releasePage());
+        return null;
     }
 
     /// 启动时静默检查（可在配置里关闭）。
@@ -116,7 +117,7 @@ public final class NSumBridgeUpdater {
     public static void prompt(UpdateInfo info) {
         String text = "当前版本：" + currentVersion() + "\n最新版本：" + info.version()
                 + "\n\n是否下载并安装？安装后需要重启 HMCL 生效。";
-        Controllers.confirm(text, "NSUM Bridge 有新版本", MessageDialogPane.MessageType.QUESTION,
+        FLFDialogs.confirm("NSUM Bridge 有新版本", text,
                 () -> downloadAndApply(info),
                 () -> LOG.info("[NSUM] 用户取消 Bridge 更新"));
     }
@@ -130,8 +131,7 @@ public final class NSumBridgeUpdater {
         try {
             Files.createDirectories(staging.getParent());
         } catch (IOException e) {
-            Controllers.dialog("无法创建下载目录：" + e.getMessage(), "NSUM Bridge",
-                    MessageDialogPane.MessageType.ERROR);
+            FLFDialogs.error("NSUM Bridge", "无法创建下载目录：" + e.getMessage());
             return;
         }
         try {
@@ -153,10 +153,7 @@ public final class NSumBridgeUpdater {
     private static Task<Void> applyTask(Path staging, UpdateInfo info) {
         return Task.supplyAsync(() -> {
             String result = apply(staging, info);
-            Platform.runLater(() -> Controllers.dialogLater(
-                    new MessageDialogPane.Builder(result, "NSUM Bridge", MessageDialogPane.MessageType.INFO)
-                            .addAction("打开文件夹", () -> FXUtils.openFolder(staging.getParent()))
-                            .build()));
+            Platform.runLater(() -> FLFDialogs.info("NSUM Bridge", result));
             return null;
         });
     }

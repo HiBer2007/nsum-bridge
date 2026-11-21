@@ -9,12 +9,11 @@
  */
 package com.hibernet.flfmod.nsum.bridge;
 
+import com.hibernet.flfmod.api.FLFDialogs;
 import javafx.application.Platform;
 import javafx.scene.control.TextInputDialog;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jackhuang.hmcl.ui.Controllers;
-import org.jackhuang.hmcl.ui.construct.MessageDialogPane;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -75,7 +74,7 @@ public final class NSumRepoActions {
             try {
                 Files.createDirectories(target.getParent());
                 if (Files.isDirectory(target) && Files.isRegularFile(target.resolve("workspace.json"))) {
-                    Platform.runLater(() -> dialog("目录已存在：" + target, MessageDialogPane.MessageType.WARNING));
+                    Platform.runLater(() -> dialog("目录已存在：" + target, FLFDialogs.Type.WARNING));
                     NSumEditor.open(target.toString());
                     return;
                 }
@@ -87,16 +86,16 @@ public final class NSumRepoActions {
                 int exit = run(command);
                 if (exit != 0) {
                     Platform.runLater(() -> dialog("克隆失败（git exit " + exit + "）：" + url,
-                            MessageDialogPane.MessageType.ERROR));
+                            FLFDialogs.Type.ERROR));
                     return;
                 }
                 Platform.runLater(() -> {
-                    dialog("仓库已克隆：" + target, MessageDialogPane.MessageType.SUCCESS);
+                    dialog("仓库已克隆：" + target, FLFDialogs.Type.SUCCESS);
                     NSumEditor.open(target.toString());
                 });
             } catch (Exception e) {
                 LOG.error("[NSUM] 克隆仓库失败", e);
-                Platform.runLater(() -> dialog("克隆失败：" + e.getMessage(), MessageDialogPane.MessageType.ERROR));
+                Platform.runLater(() -> dialog("克隆失败：" + e.getMessage(), FLFDialogs.Type.ERROR));
             }
         });
     }
@@ -115,12 +114,12 @@ public final class NSumRepoActions {
                 }
                 Platform.runLater(() -> {
                     dialog("仓库已创建：" + target + "\n\n已打开 NSUM 编辑器，可直接配置分支与同步规则。",
-                            MessageDialogPane.MessageType.SUCCESS);
+                            FLFDialogs.Type.SUCCESS);
                     NSumEditor.open(target.toString());
                 });
             } catch (Exception e) {
                 LOG.error("[NSUM] 创建仓库失败", e);
-                Platform.runLater(() -> dialog("创建失败：" + e.getMessage(), MessageDialogPane.MessageType.ERROR));
+                Platform.runLater(() -> dialog("创建失败：" + e.getMessage(), FLFDialogs.Type.ERROR));
             }
         });
     }
@@ -152,8 +151,8 @@ public final class NSumRepoActions {
         return name.replaceAll("[\\\\/:*?\"<>|]", "-");
     }
 
-    private static void dialog(String text, MessageDialogPane.MessageType type) {
-        Controllers.dialog(text, "NSUM", type);
+    private static void dialog(String text, FLFDialogs.Type type) {
+        FLFDialogs.show(type, "NSUM", text);
     }
 
     private static final String TEMPLATE = """
