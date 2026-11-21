@@ -47,7 +47,8 @@ public final class NSumMetadata {
     }
 
     /// 单条版本记录。
-    public record Entry(String version, String downloadLink, String releasePage, String sha256) {
+    public record Entry(String version, String downloadLink, String releasePage, String sha256,
+                        java.util.List<String> hmclVersions) {
     }
 
     /// 某个项目的 latest + 版本列表。
@@ -60,6 +61,21 @@ public final class NSumMetadata {
                 }
             }
             return entries.isEmpty() ? null : entries.get(entries.size() - 1);
+        }
+
+        /// 选择与当前 HMCL 版本兼容的最高版本；没有 hmcl_versions 的旧记录视为兼容。
+        public Entry latestCompatible(String hmclVersion) {
+            Entry best = null;
+            for (Entry entry : entries) {
+                if (!entry.hmclVersions().isEmpty()
+                        && !entry.hmclVersions().contains(hmclVersion)) {
+                    continue;
+                }
+                if (best == null || compare(entry.version(), best.version()) > 0) {
+                    best = entry;
+                }
+            }
+            return best;
         }
     }
 
@@ -113,11 +129,20 @@ public final class NSumMetadata {
                     continue;
                 }
                 JsonObject item = element.getAsJsonObject();
+                java.util.List<String> hmclVersions = new java.util.ArrayList<>();
+                if (item.has("hmcl_versions") && item.get("hmcl_versions").isJsonArray()) {
+                    for (JsonElement version : item.getAsJsonArray("hmcl_versions")) {
+                        if (version.isJsonPrimitive()) {
+                            hmclVersions.add(version.getAsString());
+                        }
+                    }
+                }
                 entries.add(new Entry(
                         string(item, "version"),
                         string(item, "download_link"),
                         string(item, "release_page"),
-                        string(item, "sha_256")));
+                        string(item, "sha_256"),
+                        java.util.List.copyOf(hmclVersions)));
             }
         }
         return new Project(project, latest, entries);

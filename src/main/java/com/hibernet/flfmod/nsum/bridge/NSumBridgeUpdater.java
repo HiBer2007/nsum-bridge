@@ -75,23 +75,20 @@ public final class NSumBridgeUpdater {
     /// 检查更新；无更新返回 null。
     public static UpdateInfo check() throws IOException, InterruptedException {
         NSumMetadata.Project project = NSumMetadata.latest(NSumMetadata.TYPE_BRIDGE);
-        if (project == null || project.latest().isBlank()) {
+        if (project == null) {
             return null;
         }
         String current = currentVersion();
-        if (NSumMetadata.compare(project.latest(), current) <= 0) {
+        String hmclVersion = org.jackhuang.hmcl.Metadata.VERSION;
+        NSumMetadata.Entry entry = project.latestCompatible(hmclVersion);
+        if (entry == null || entry.version().isBlank() || entry.downloadLink().isBlank()) {
             return null;
         }
-        for (NSumMetadata.Entry entry : project.entries()) {
-            if (project.latest().equals(entry.version())) {
-                if (entry.downloadLink().isBlank()) {
-                    return null;
-                }
-                return new UpdateInfo(entry.version(), entry.downloadLink(),
-                        entry.sha256(), entry.releasePage());
-            }
+        if (NSumMetadata.compare(entry.version(), current) <= 0) {
+            return null;
         }
-        return null;
+        return new UpdateInfo(entry.version(), entry.downloadLink(),
+                entry.sha256(), entry.releasePage());
     }
 
     /// 启动时静默检查（可在配置里关闭）。
