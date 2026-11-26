@@ -23,6 +23,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 /// 用 **HIC CLI 壳**（`hci_cli.exe`）无人值守安装 NSUM Runtime。
 ///
@@ -45,6 +46,11 @@ public final class NSumHicInstaller {
 
     /// 用 CLI 分发目录安装（目录含 hci_cli.exe + product.json + install.json + deploy/）。
     public static Result installFromDist(Path distDir, Path targetDir, ProgressSink sink) {
+        return installFromDist(distDir, targetDir, sink, () -> false);
+    }
+
+    public static Result installFromDist(Path distDir, Path targetDir, ProgressSink sink,
+                                         BooleanSupplier cancelled) {
         if (distDir == null || !Files.isDirectory(distDir)) {
             return new Result(false, -1, "CLI 分发目录不存在: " + distDir);
         }
@@ -61,11 +67,15 @@ public final class NSumHicInstaller {
                 "--product", product.getFileName().toString(),
                 "--flow", flow.getFileName().toString(),
                 "--path", targetDir.toString()));
-        return run(exe, distDir, args, sink);
+        return run(exe, distDir, args, sink, cancelled);
     }
 
     /// 启动 HIC CLI 并解析 `=====JSON-BEGIN/END=====` 中的 progress/message/finish。
-    private static Result run(Path exe, Path workDir, List<String> args, ProgressSink sink) {
+    private static Result run(Path exe, Path workDir, List<String> args, ProgressSink sink,
+                              BooleanSupplier cancelled) {
+        if (cancelled != null && cancelled.getAsBoolean()) {
+            return new Result(false, -1, "安装已取消");
+        }
         List<String> command = new ArrayList<>();
         command.add(exe.toString());
         command.addAll(args);
@@ -75,6 +85,21 @@ public final class NSumHicInstaller {
                     .directory(workDir.toFile())
                     .redirectErrorStream(true);
             Process process = builder.start();
+            Thread cancelWatcher = new Thread(() -> {
+                try {
+                    while (process.isAlive()) {
+                        if (cancelled != null && cancelled.getAsBoolean()) {
+                            process.destroyForcibly();
+                            return;
+                        }
+                        Thread.sleep(100);
+                    }
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                }
+            }, "nsum-install-cancel-watcher");
+            cancelWatcher.setDaemon(true);
+            cancelWatcher.start();
 
             boolean success = false;
             boolean inJson = false;
@@ -83,6 +108,10 @@ public final class NSumHicInstaller {
                     new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
+                    if (cancelled != null && cancelled.getAsBoolean()) {
+                        process.destroyForcibly();
+                        return new Result(false, -1, "安装已取消");
+                    }
                     if (line.contains("JSON-BEGIN")) {
                         inJson = true;
                         block.setLength(0);
@@ -104,6 +133,9 @@ public final class NSumHicInstaller {
             if (!process.waitFor(30, TimeUnit.MINUTES)) {
                 process.destroyForcibly();
                 return new Result(false, -1, "安装超时（30 分钟）");
+            }
+            if (cancelled != null && cancelled.getAsBoolean()) {
+                return new Result(false, -1, "安装已取消");
             }
             int exit = process.exitValue();
             LOG.info("[NSUM] HIC CLI 退出码: {}", exit);

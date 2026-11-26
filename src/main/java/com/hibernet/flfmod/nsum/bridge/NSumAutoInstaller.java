@@ -130,6 +130,10 @@ public final class NSumAutoInstaller {
                 if (success) {
                     return;
                 }
+                if (taskExecutor.isCancelled()) {
+                    LOG.info("[NSUM] Runtime 安装已被用户取消");
+                    return;
+                }
                 Throwable error = taskExecutor.getException();
                 String message = error == null ? "未知错误"
                         : (error.getMessage() == null ? error.toString() : error.getMessage());
@@ -148,12 +152,15 @@ public final class NSumAutoInstaller {
         return new Task<Void>() {
             @Override
             public void execute() throws Exception {
+                FLFTasks.checkCancelled(this);
                 setStage("解压 NSUM Runtime");
                 Path root = unpackRoot(zip);
+                FLFTasks.checkCancelled(this);
                 Path dist = findFileNear(root, "hci_cli.exe");
                 if (dist == null) {
                     setStage("释放运行时文件");
                     Path sourceDir = unpack(zip);
+                    FLFTasks.checkCancelled(this);
                     NSumRuntime.install(sourceDir, version);
                     return;
                 }
@@ -164,7 +171,8 @@ public final class NSumAutoInstaller {
                             if (detail != null && !detail.isBlank()) {
                                 setStage(detail);
                             }
-                        });
+                        }, FLFTasks.cancellation(this));
+                FLFTasks.checkCancelled(this);
                 if (!result.success()) {
                     throw new IOException(result.message());
                 }
