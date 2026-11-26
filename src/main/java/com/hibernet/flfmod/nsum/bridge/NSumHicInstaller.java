@@ -41,7 +41,97 @@ public final class NSumHicInstaller {
     public record Result(boolean success, int exitCode, String message) {
     }
 
+    public record ExternalDownload(String name, String url, long size, String step) {
+    }
+
+    public record ExternalCheck(int exitCode, List<ExternalDownload> downloads, String manifest) {
+    }
+
     private NSumHicInstaller() {
+    }
+
+    /// 新版 HIC CLI 才支持外部下载模式。
+    public static boolean supportsExternal(Path distDir) {
+        Path exe = distDir == null ? null : distDir.resolve("hci_cli.exe");
+        if (exe == null || !Files.isRegularFile(exe)) {
+            return false;
+        }
+        try {
+            Process process = new ProcessBuilder(exe.toString(), "--help")
+                    .directory(distDir.toFile())
+                    .redirectErrorStream(true)
+                    .start();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (line.contains("--external-download")) {
+                        process.destroy();
+                        return true;
+                    }
+                }
+            }
+            process.waitFor(5, TimeUnit.SECONDS);
+        } catch (Exception ignored) {
+            // 旧版没有该参数
+        }
+        return false;
+    }
+
+    /// 运行一次外部下载模式；exit 10 表示需要把清单里的文件放到 files/ 后重跑。
+    public static ExternalCheck checkExternal(Path distDir, Path targetDir, Path externalDir,
+                                              ProgressSink sink, BooleanSupplier cancelled) {
+        Path exe = distDir.resolve("hci_cli.exe");
+        Path product = distDir.resolve("product.json");
+        Path flow = distDir.resolve("install.json");
+        if (!Files.isRegularFile(exe) || !Files.isRegularFile(product)
+                || !Files.isRegularFile(flow)) {
+            return new ExternalCheck(-1, List.of(), null);
+        }
+        List<String> args = new ArrayList<>(List.of(
+                "--cli", "--json", "--silent",
+                "--product", product.getFileName().toString(),
+                "--flow", flow.getFileName().toString(),
+                "--path", targetDir.toString(),
+                "--external-download", externalDir.toString()));
+        Result result = run(exe, distDir, args, sink, cancelled);
+        if (result.exitCode() != 10) {
+            return new ExternalCheck(result.exitCode(), List.of(), null);
+        }
+        Path manifest = externalDir.resolve("downloads.json");
+        return new ExternalCheck(10, parseDownloads(manifest), manifest.toString());
+    }
+
+    private static List<ExternalDownload> parseDownloads(Path manifest) {
+        if (manifest == null || !Files.isRegularFile(manifest)) {
+            return List.of();
+        }
+        try {
+            JsonObject root = JsonParser.parseString(Files.readString(manifest)).getAsJsonObject();
+            JsonObject data = root.has("data") && root.get("data").isJsonObject()
+                    ? root.getAsJsonObject("data") : root;
+            if (!data.has("downloads") || !data.get("downloads").isJsonArray()) {
+                return List.of();
+            }
+            List<ExternalDownload> downloads = new ArrayList<>();
+            for (var element : data.getAsJsonArray("downloads")) {
+                if (!element.isJsonObject()) {
+                    continue;
+                }
+                JsonObject item = element.getAsJsonObject();
+                String name = item.has("name") ? item.get("name").getAsString() : "";
+                String url = item.has("url") ? item.get("url").getAsString() : "";
+                long size = item.has("size") ? item.get("size").getAsLong() : -1;
+                String step = item.has("step") ? item.get("step").getAsString() : "";
+                if (!name.isBlank() && !url.isBlank()) {
+                    downloads.add(new ExternalDownload(name, url, size, step));
+                }
+            }
+            return downloads;
+        } catch (Exception e) {
+            LOG.warn("[NSUM] 解析 HIC 外部下载清单失败: {}", e.toString());
+            return List.of();
+        }
     }
 
     /// 用 CLI 分发目录安装（目录含 hci_cli.exe + product.json + install.json + deploy/）。

@@ -125,7 +125,7 @@ public final class NSumAutoInstaller {
                         .setName("下载 NSUM Runtime " + version);
         AtomicReference<TaskExecutorDialogPane> dialogRef = new AtomicReference<>();
         AtomicReference<String> detailRef = new AtomicReference<>();
-        Task<Void> install = installTask(zip, version, detail -> {
+        Task<Void> install = installChain(zip, version, detail -> {
             if (detail == null || detail.isBlank()) {
                 return;
             }
@@ -168,6 +168,101 @@ public final class NSumAutoInstaller {
     private static String shortDetail(String detail) {
         String value = detail.replace('\n', ' ').trim();
         return value.length() > 72 ? value.substring(0, 72) + "…" : value;
+    }
+
+    /// 解压后判断 HIC 是否支持外部下载：
+    /// 新 HIC 会把依赖拆成独立的 FileDownloadTask，每个文件一条进度条；
+    /// 旧 HIC 仍走原来的同步安装路径。
+    private static Task<Void> installChain(Path zip, String version,
+                                           java.util.function.Consumer<String> detailSink) {
+        return Task.supplyAsync("解压 NSUM Runtime", () -> {
+                    Path root = unpackRoot(zip);
+                    return findFileNear(root, "hci_cli.exe");
+                })
+                .thenComposeAsync(dist -> {
+                    if (dist == null) {
+                        return installTask(zip, version, detailSink);
+                    }
+                    if (!NSumHicInstaller.supportsExternal(dist)) {
+                        return installTask(zip, version, detailSink);
+                    }
+                    Path external = NSumPaths.nsumDir().resolve("external-download");
+                    try {
+                        Files.createDirectories(external);
+                    } catch (IOException e) {
+                        return Task.runAsync("创建 HIC 外部下载目录", () -> {
+                            throw e;
+                        });
+                    }
+                    return externalChain(dist, NSumPaths.runtimeDir(), external, version,
+                            detailSink, 1);
+                });
+    }
+
+    private static Task<Void> externalChain(Path dist, Path target, Path external,
+                                            String version,
+                                            java.util.function.Consumer<String> detailSink,
+                                            int round) {
+        if (round > 6) {
+            return Task.runAsync("HIC 外部依赖", () -> {
+                throw new IOException("HIC 外部下载步骤超过 6 轮，已中止");
+            });
+        }
+        return new Task<NSumHicInstaller.ExternalCheck>() {
+            @Override
+            public void execute() {
+                setResult(NSumHicInstaller.checkExternal(dist, target, external,
+                        (percent, detail) -> {
+                            if (detail != null && !detail.isBlank()) {
+                                detailSink.accept(detail);
+                            }
+                        }, this::isCancelled));
+            }
+        }.setName("检查 HIC 外部依赖")
+                .thenComposeAsync(check -> {
+                    if (check.exitCode() == 0) {
+                        return Task.runAsync("完成 NSUM Runtime 安装", () ->
+                                NSumRuntime.markInstalled(version, "hic-external"));
+                    }
+                    if (check.exitCode() != 10 || check.downloads().isEmpty()) {
+                        return Task.runAsync("HIC 外部依赖失败", () -> {
+                            throw new IOException("HIC 返回退出码 " + check.exitCode()
+                                    + "，但没有可下载清单");
+                        });
+                    }
+                    Task<Void> downloads = downloadHicDependencies(external, check);
+                    return downloads.thenComposeAsync(() ->
+                            externalChain(dist, target, external, version, detailSink, round + 1));
+                });
+    }
+
+    private static Task<Void> downloadHicDependencies(Path external,
+                                                      NSumHicInstaller.ExternalCheck check) {
+        Path filesDir = external.resolve("files");
+        try {
+            Files.createDirectories(filesDir);
+        } catch (IOException e) {
+            return Task.runAsync("创建 HIC 依赖目录", () -> {
+                throw e;
+            });
+        }
+        Task<Void> chain = null;
+        for (NSumHicInstaller.ExternalDownload download : check.downloads()) {
+            Path target = filesDir.resolve(download.name());
+            Task<Void> task = new FileDownloadTask(download.url(), target)
+                    .setName("下载 HIC 依赖: " + download.name());
+            if (download.size() > 0) {
+                task = task.thenRunAsync(() -> {
+                    long actual = Files.size(target);
+                    if (actual != download.size()) {
+                        throw new IOException("HIC 依赖大小不匹配: " + download.name()
+                                + "（期望 " + download.size() + "，实际 " + actual + "）");
+                    }
+                }).setName("校验 " + download.name());
+            }
+            chain = chain == null ? task : chain.thenComposeAsync(task);
+        }
+        return chain == null ? Task.runAsync("HIC 无外部依赖", () -> { }) : chain;
     }
 
     /// 安装任务：把下载好的 zip 交给 HIC CLI 安装器，HIC 的 progress 事件映射到任务进度。
