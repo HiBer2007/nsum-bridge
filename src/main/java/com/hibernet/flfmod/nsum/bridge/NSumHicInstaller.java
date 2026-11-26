@@ -85,10 +85,14 @@ public final class NSumHicInstaller {
                     .directory(workDir.toFile())
                     .redirectErrorStream(true);
             Process process = builder.start();
+            if (sink != null) {
+                sink.progress(-1, "HIC CLI 已启动，等待安装步骤输出");
+            }
             Thread cancelWatcher = new Thread(() -> {
                 try {
                     while (process.isAlive()) {
                         if (cancelled != null && cancelled.getAsBoolean()) {
+                            LOG.info("[NSUM] 用户取消安装，结束 HIC CLI");
                             process.destroyForcibly();
                             return;
                         }
@@ -126,6 +130,9 @@ public final class NSumHicInstaller {
                         block.append(line).append('\n');
                     } else if (!line.isBlank()) {
                         LOG.info("[NSUM] [hic] {}", line);
+                        if (sink != null) {
+                            sink.progress(-1, describe(line));
+                        }
                     }
                 }
             }
@@ -147,6 +154,41 @@ public final class NSumHicInstaller {
             Thread.currentThread().interrupt();
             return new Result(false, -1, "安装被中断");
         }
+    }
+
+    private static String describe(String line) {
+        String text = line == null ? "" : line.trim();
+        if (text.isBlank()) {
+            return "等待 HIC CLI 输出";
+        }
+        String lower = text.toLowerCase(java.util.Locale.ROOT);
+        if (lower.contains("step 'gitdownload'") || lower.contains("download backend 'github'")) {
+            return "正在下载 Git for Windows 组件（HIC）";
+        }
+        if (lower.contains("step 'gitplan'")) {
+            return "检查 Git 组件";
+        }
+        if (lower.contains("step 'lang'")) {
+            return "初始化安装语言";
+        }
+        if (lower.contains("step 'license'")) {
+            return "处理许可协议";
+        }
+        if (lower.contains("step 'path'")) {
+            return "检查安装目录";
+        }
+        if (lower.contains("step 'components'")) {
+            return "检查组件";
+        }
+        if (lower.contains("download chain init")) {
+            return "准备组件下载源";
+        }
+        if (lower.contains("download") && lower.contains("git")) {
+            return "下载 Git for Windows 组件";
+        }
+        String cleaned = text.replaceFirst("^\\[(INFO|WARN|DEBUG|ERROR)\\]\\s*", "");
+        cleaned = cleaned.replaceFirst("^step '([^']+)'", "步骤 $1");
+        return cleaned.length() > 180 ? cleaned.substring(0, 180) + "…" : cleaned;
     }
 
     private static boolean handleEvent(String json, ProgressSink sink) {

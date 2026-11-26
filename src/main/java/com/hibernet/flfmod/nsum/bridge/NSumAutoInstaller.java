@@ -19,6 +19,7 @@ import org.apache.logging.log4j.Logger;
 import org.jackhuang.hmcl.task.FileDownloadTask;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.task.TaskListener;
+import org.jackhuang.hmcl.ui.construct.TaskExecutorDialogPane;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -31,6 +32,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -121,7 +123,18 @@ public final class NSumAutoInstaller {
                 : new FileDownloadTask(link, zip,
                         FileDownloadTask.IntegrityCheck.of("SHA-256", entry.sha256()))
                         .setName("下载 NSUM Runtime " + version);
-        Task<Void> install = installTask(zip, version);
+        AtomicReference<TaskExecutorDialogPane> dialogRef = new AtomicReference<>();
+        AtomicReference<String> detailRef = new AtomicReference<>();
+        Task<Void> install = installTask(zip, version, detail -> {
+            if (detail == null || detail.isBlank()) {
+                return;
+            }
+            detailRef.set(detail);
+            TaskExecutorDialogPane pane = dialogRef.get();
+            if (pane != null) {
+                Platform.runLater(() -> pane.setTitle("安装 NSUM Runtime · " + shortDetail(detail)));
+            }
+        });
         Task<Void> task = download.thenComposeAsync(install);
 
         TaskListener listener = new TaskListener() {
@@ -144,34 +157,65 @@ public final class NSumAutoInstaller {
                                 + "\n可删除该文件后重试；或手动下载放到 .hmcl/nsum/downloads/ 后点「从 downloads 安装」。"));
             }
         };
-        FLFTasks.submit(task, (update ? "更新" : "安装") + " NSUM Runtime " + version, listener);
+        var handle = FLFTasks.submit(task, (update ? "更新" : "安装") + " NSUM Runtime " + version, listener);
+        dialogRef.set(handle.pane());
+        String pending = detailRef.get();
+        if (pending != null) {
+            Platform.runLater(() -> handle.pane().setTitle("安装 NSUM Runtime · " + shortDetail(pending)));
+        }
+    }
+
+    private static String shortDetail(String detail) {
+        String value = detail.replace('\n', ' ').trim();
+        return value.length() > 72 ? value.substring(0, 72) + "…" : value;
     }
 
     /// 安装任务：把下载好的 zip 交给 HIC CLI 安装器，HIC 的 progress 事件映射到任务进度。
-    private static Task<Void> installTask(Path zip, String version) {
+    private static Task<Void> installTask(Path zip, String version,
+                                          java.util.function.Consumer<String> detailSink) {
         return new Task<Void>() {
             @Override
             public void execute() throws Exception {
+                if (isCancelled()) {
+                    throw new java.util.concurrent.CancellationException("安装已取消");
+                }
                 FLFTasks.checkCancelled(this);
                 setStage("解压 NSUM Runtime");
                 Path root = unpackRoot(zip);
+                if (isCancelled()) {
+                    throw new java.util.concurrent.CancellationException("安装已取消");
+                }
                 FLFTasks.checkCancelled(this);
                 Path dist = findFileNear(root, "hci_cli.exe");
                 if (dist == null) {
                     setStage("释放运行时文件");
                     Path sourceDir = unpack(zip);
+                    if (isCancelled()) {
+                        throw new java.util.concurrent.CancellationException("安装已取消");
+                    }
                     FLFTasks.checkCancelled(this);
                     NSumRuntime.install(sourceDir, version);
                     return;
                 }
                 setStage("运行 HIC CLI 安装器");
+                if (detailSink != null) {
+                    detailSink.accept("正在启动 HIC CLI 安装器");
+                }
                 NSumHicInstaller.Result result = NSumHicInstaller.installFromDist(
                         dist, NSumPaths.runtimeDir(), (percent, detail) -> {
-                            updateProgress(percent / 100.0);
+                            if (percent >= 0) {
+                                updateProgress(percent / 100.0);
+                            }
                             if (detail != null && !detail.isBlank()) {
                                 setStage(detail);
+                                if (detailSink != null) {
+                                    detailSink.accept(detail);
+                                }
                             }
-                        }, FLFTasks.cancellation(this));
+                        }, this::isCancelled);
+                if (isCancelled()) {
+                    throw new java.util.concurrent.CancellationException("安装已取消");
+                }
                 FLFTasks.checkCancelled(this);
                 if (!result.success()) {
                     throw new IOException(result.message());
