@@ -60,6 +60,26 @@ sum-bridge
 4. 导入 NSUM 整合包（`nsum.modpack.json` 清单）→ 实例创建；
 5. 启动实例：先同步（日志见 `.hmcl/nsum/logs/`），成功后进入游戏。
 
+## 多线程下载（Runtime / HIC 依赖）
+
+下载 NSUM Runtime 包与 HIC 声明的外部依赖时使用 HTTP Range 分片多线程（逻辑参考 FLF 的 `hmcl-parallel-download`）：
+
+- 自动探测 `206 / Content-Range`；支持 Range 且体积 ≥ 8 MB 时按分片并发写入预分配文件，默认 16 线程（上限 32/服务器）；
+- 服务器不支持 Range、体积过小、超时（默认 10 分钟）或任一分片失败 → 自动回退 HMCL/单流下载；
+- 下载完成后按元数据 `sha_256` 校验；进度与取消沿用 HMCL 任务对话框；
+- 配置：`<HMCL>/.hmcl/nsum/download.properties`：
+
+```properties
+enabled=true
+threads=16
+minSizeMB=8
+chunkMB=0
+retries=2
+```
+
+  也可用系统属性覆盖：`-Dnsum.download.threads=8`、`-Dnsum.download.minSizeMB=8`、`-Dnsum.download.enabled=false`。
+
+
 ## 自检（无界面）
 
 ```powershell

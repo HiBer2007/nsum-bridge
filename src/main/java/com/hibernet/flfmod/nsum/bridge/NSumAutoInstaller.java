@@ -118,11 +118,8 @@ public final class NSumAutoInstaller {
         } catch (IOException e) {
             LOG.debug("[NSUM] 删除旧下载失败: {}", e.toString());
         }
-        Task<Void> download = entry.sha256().isBlank()
-                ? new FileDownloadTask(link, zip).setName("下载 NSUM Runtime " + version)
-                : new FileDownloadTask(link, zip,
-                        FileDownloadTask.IntegrityCheck.of("SHA-256", entry.sha256()))
-                        .setName("下载 NSUM Runtime " + version);
+        Task<Void> download = new NSumParallelDownloadTask(link, zip, entry.sha256(),
+                "NSUM Runtime " + version);
         AtomicReference<TaskExecutorDialogPane> dialogRef = new AtomicReference<>();
         AtomicReference<String> detailRef = new AtomicReference<>();
         Task<Void> install = installChain(zip, version, detail -> {
@@ -249,8 +246,8 @@ public final class NSumAutoInstaller {
         Task<Void> chain = null;
         for (NSumHicInstaller.ExternalDownload download : check.downloads()) {
             Path target = filesDir.resolve(download.name());
-            Task<Void> task = new FileDownloadTask(download.url(), target)
-                    .setName("下载 HIC 依赖: " + download.name());
+            Task<Void> task = new NSumParallelDownloadTask(download.url(), target, "",
+                    "HIC 依赖 " + download.name());
             if (download.size() > 0) {
                 task = task.thenRunAsync(() -> {
                     long actual = Files.size(target);
