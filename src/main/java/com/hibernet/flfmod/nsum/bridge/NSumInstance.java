@@ -44,6 +44,14 @@ public final class NSumInstance {
     public String core = "";
     /// Git 分支（checkout 用；空 = 与整合包分支同名）。
     public String gitBranch = "";
+    /// 整合包文件结构版本（pack_format；旧包为 1）。
+    public int packFormat = 1;
+    /// 整合包来源提交（导入时记录，便于追溯与缓存）。
+    public String sourceCommit = "";
+    /// 整合包来源 Git 分支。
+    public String sourceGitBranch = "";
+    /// 仓库默认分支。
+    public String defaultBranch = "";
     /// 展示名。
     public String name = "NSUM";
     /// 游戏版本（如 1.21.4），安装与版本比对用。
@@ -77,6 +85,10 @@ public final class NSumInstance {
             if (obj.has("branch")) instance.branch = obj.get("branch").getAsString();
             if (obj.has("branchType")) instance.branchType = obj.get("branchType").getAsString();
             if (obj.has("gitBranch")) instance.gitBranch = obj.get("gitBranch").getAsString();
+            if (obj.has("packFormat")) instance.packFormat = obj.get("packFormat").getAsInt();
+            if (obj.has("sourceCommit")) instance.sourceCommit = obj.get("sourceCommit").getAsString();
+            if (obj.has("sourceGitBranch")) instance.sourceGitBranch = obj.get("sourceGitBranch").getAsString();
+            if (obj.has("defaultBranch")) instance.defaultBranch = obj.get("defaultBranch").getAsString();
             if (obj.has("name")) instance.name = obj.get("name").getAsString();
             if (obj.has("gameVersion")) instance.gameVersion = obj.get("gameVersion").getAsString();
             if (obj.has("modloader")) instance.modloader = obj.get("modloader").getAsString();

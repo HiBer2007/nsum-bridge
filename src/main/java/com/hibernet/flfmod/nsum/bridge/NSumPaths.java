@@ -70,6 +70,16 @@ public final class NSumPaths {
         return nsumDir().resolve("repos");
     }
 
+    /// `.hmcl/nsum/cache/`（整合包附带文件的共享缓存）。
+    public static Path cacheDir() {
+        return nsumDir().resolve("cache");
+    }
+
+    /// `.hmcl/nsum/cache/files/`（按 SHA-256 内容寻址）。
+    public static Path fileCacheDir() {
+        return cacheDir().resolve("files");
+    }
+
     /// 实例标记：`<实例目录>/.NSUM/instance.json`。
     public static Path instanceMarker(Path versionRoot) {
         return versionRoot.resolve(".NSUM").resolve(INSTANCE_MARKER);

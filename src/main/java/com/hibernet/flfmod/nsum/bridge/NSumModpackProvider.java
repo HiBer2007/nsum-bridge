@@ -11,6 +11,8 @@ package com.hibernet.flfmod.nsum.bridge;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.hibernet.flfmod.api.game.FLFGameRepository;
@@ -30,7 +32,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
 import java.util.Enumeration;
+import java.util.HexFormat;
 import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -86,6 +90,15 @@ public final class NSumModpackProvider implements FLFModpackProvider {
         instance.branch = optString(instanceObj, "branch", "base");
         instance.gitBranch = optString(instanceObj, "gitBranch", "");
         instance.branchType = optString(instanceObj, "branchType", "universal");
+        JsonObject repositoryObj = obj.has("repository") && obj.get("repository").isJsonObject()
+                ? obj.getAsJsonObject("repository")
+                : new JsonObject();
+        instance.defaultBranch = optString(repositoryObj, "default_branch", "");
+        instance.sourceCommit = optString(repositoryObj, "commit", "");
+        instance.sourceGitBranch = optString(repositoryObj, "git_branch", "");
+        modpack.packFormat = obj.has("pack_format") ? obj.get("pack_format").getAsInt() : 1;
+        modpack.sourceCommit = instance.sourceCommit;
+        modpack.sourceGitBranch = instance.sourceGitBranch;
         instance.core = optString(obj, "core", "");
         instance.gameVersion = modpack.gameVersion;
         instance.modloader = optString(obj, "modloader", "fabric");
@@ -133,6 +146,9 @@ public final class NSumModpackProvider implements FLFModpackProvider {
         private FLFModpackManifest manifest = NSumModpackManifest.INSTANCE;
         private NSumInstance instance;
         private String manifestJson = "{}";
+        private int packFormat = 1;
+        private String sourceCommit = "";
+        private String sourceGitBranch = "";
 
         @Override
         public String name() {
@@ -181,13 +197,21 @@ public final class NSumModpackProvider implements FLFModpackProvider {
             if (instance.name == null || instance.name.isBlank()) {
                 instance.name = NSumInstanceVisuals.decorateName(context.instanceId());
             }
+            instance.packFormat = packFormat;
+            instance.sourceCommit = sourceCommit;
+            instance.sourceGitBranch = sourceGitBranch;
+            if (!sourceCommit.isBlank() && instance.gitBranch.isBlank()) {
+                instance.gitBranch = sourceGitBranch;
+            }
             instance.write(versionRoot);
             NSumInstanceVisuals.ensureIcon(versionRoot);
 
             NSumGameInstaller.ensure(context.repository(), context.instanceId(), instance);
-            int extracted = extractOverrides(context.archive(), versionRoot);
-            LOG.info("[NSUM] 实例已创建: {} (overrides={} 个文件, repo={})",
-                    versionRoot, extracted, instance.repo);
+            int extracted = installEmbedded(context.archive(), versionRoot);
+            LOG.info("[NSUM] 实例已创建: {} (pack_format={}, embedded={} 个文件, commit={}, repo={})",
+                    versionRoot, packFormat, extracted,
+                    sourceCommit.isBlank() ? "-" : sourceCommit.substring(0,
+                            Math.min(12, sourceCommit.length())), instance.repo);
 
             if (NSumRuntime.status().installed()) {
                 NSumRuntime.SyncResult result = NSumRuntime.sync(instance, versionRoot);
@@ -197,6 +221,14 @@ public final class NSumModpackProvider implements FLFModpackProvider {
             } else {
                 LOG.warn("[NSUM] Runtime 未安装，实例只写入了标记；请在 NSUM 页面安装 Runtime 后再启动");
             }
+        }
+
+        private int installEmbedded(Path zipFile, Path versionRoot) throws IOException {
+            int count = NSumPackEmbedded.install(zipFile, versionRoot, manifestJson);
+            if (count < 0) {
+                return extractOverrides(zipFile, versionRoot);
+            }
+            return count;
         }
 
         private int extractOverrides(Path zipFile, Path versionRoot) throws IOException {

@@ -13,7 +13,7 @@
 | 启动方式 | `LaunchStrategies.register(...)` | `nsum-runtime` |
 | GUI | `FLFHMCLUIApi` | 侧栏分类 `nsum` / 页面 `nsum-bridge:home` |
 
-- 导入 `*_nsum.zip`（NSUM 导出的整合包）→ 建实例 + 写 `.NSUM/instance.json`；
+- 导入 `.nsumpack`（NSUM 清单型整合包）→ 建实例 + 写 `.NSUM/instance.json`；默认包不含文件，附带文件按清单 `embedded[]` 安装并缓存到 `.hmcl/nsum/cache/files/`；
 - 启动 NSUM 实例时先让 **NSUM Runtime** 同步仓库内容，成功后再交回 HMCL 正常启动；
 - Runtime 由本模组自行安装到 `<HMCL>/.hmcl/nsum/runtime/`（自动下载后续再做）；
 - **版本描述 `<id>.json` 由本模组生成**（`NSumVersionDescriptor`）：优先继承已安装的 Fabric 版本并复制其 mainClass/arguments/libraries，缺失时写最小描述并告警；安装与每次启动前幂等补齐。
