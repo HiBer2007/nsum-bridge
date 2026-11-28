@@ -37,7 +37,7 @@ final class NSumGit {
     private static final Logger LOG = LogManager.getLogger(NSumGit.class);
 
     /// Upper bound for `ls-remote` probes (seconds).
-    static final int PROBE_TIMEOUT_SECONDS = Integer.getInteger("nsum.repo.probeTimeoutSeconds", 20);
+    static final int PROBE_TIMEOUT_SECONDS = NSumRepoPreferences.probeTimeoutSeconds();
     /// Upper bound for local git commands (seconds).
     static final int COMMAND_TIMEOUT_SECONDS = Integer.getInteger("nsum.repo.commandTimeoutSeconds", 120);
 
@@ -122,11 +122,21 @@ final class NSumGit {
     /// <p>No ref pattern is passed on purpose: a reachable but still empty repository lists no
     /// refs and must not be mistaken for an unreachable address.</p>
     static boolean reachable(String url, int timeoutSeconds) {
+        return probeLatency(url, timeoutSeconds) >= 0;
+    }
+
+    /// Latency of `git ls-remote` in milliseconds, or `-1` when unreachable/timeout.
+    static long probeLatency(String url, int timeoutSeconds) {
         String value = url == null ? "" : url.trim();
         if (value.isEmpty()) {
-            return false;
+            return -1;
         }
-        return run(List.of("ls-remote", value), timeoutSeconds).ok();
+        long started = System.nanoTime();
+        Result result = run(List.of("ls-remote", value), timeoutSeconds);
+        if (!result.ok()) {
+            return -1;
+        }
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
     }
 
     /// True when `dir` is the root of a git working tree.

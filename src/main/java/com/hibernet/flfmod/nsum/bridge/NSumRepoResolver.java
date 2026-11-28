@@ -41,35 +41,121 @@ final class NSumRepoResolver {
 
     /// Addresses actually worth trying for a sync.
     ///
-    /// <p>With a remembered working address the list is used as-is (no probe, so a normal
-    /// launch pays nothing). Otherwise the first address that answers `git ls-remote` is
-    /// moved to the front; when nothing answers the original order is kept so the Runtime
-    /// reports the real error.</p>
+    /// <p>Order: explicit preference (URL or type) first, then the remembered working
+    /// address, then the fastest reachable remaining address (all probed in parallel).
+    /// Unreachable addresses stay at the end so the Runtime can still report a real error.</p>
     static List<String> attemptOrder(NSumInstance instance, Consumer<String> onLine) {
         List<String> candidates = candidates(instance);
         if (candidates.size() <= 1) {
             return candidates;
         }
-        String active = instance == null || instance.activeRepoUrl == null ? "" : instance.activeRepoUrl.trim();
-        if (!active.isEmpty()) {
-            LOG.info("[NSUM] repository address remembered, trying it first: {}", active);
-            return candidates;
-        }
-        Optional<String> reachable = firstReachable(candidates, onLine);
-        if (reachable.isEmpty()) {
-            LOG.warn("[NSUM] no repository address answered the probe, keeping manifest order");
-            return candidates;
-        }
-        String first = reachable.get();
+        String preference = NSumRepoPreferences.preference();
         List<String> order = new ArrayList<>();
-        order.add(first);
+        if (isExplicit(preference)) {
+            moveFirst(order, candidates, url -> NSumRepoUrls.same(url, preference));
+            LOG.info("[NSUM] repository preference: explicit URL {} first", preference);
+        } else if (isType(preference)) {
+            moveFirst(order, candidates, url -> NSumRepoUrl.of(url).type().equals(preference));
+            LOG.info("[NSUM] repository preference: {} first, others as fallback", preference);
+        }
+        String active = instance == null || instance.activeRepoUrl == null
+                ? "" : instance.activeRepoUrl.trim();
+        if (!active.isEmpty()) {
+            moveFirst(order, candidates, url -> NSumRepoUrls.same(url, active));
+            LOG.info("[NSUM] repository address remembered, trying it first: {}", active);
+        }
         for (String candidate : candidates) {
-            if (!NSumRepoUrls.same(candidate, first)) {
+            if (!contains(order, candidate)) {
                 order.add(candidate);
             }
         }
-        LOG.info("[NSUM] repository fallback order: {}", order);
-        return order;
+        if (order.size() <= 1 || isExplicit(preference) || isType(preference) || !active.isEmpty()) {
+            return order;
+        }
+        Optional<String> fastest = fastest(candidates, onLine);
+        if (fastest.isEmpty()) {
+            LOG.warn("[NSUM] no repository address answered the probe, keeping manifest order");
+            return order;
+        }
+        String first = fastest.get();
+        List<String> sorted = new ArrayList<>();
+        sorted.add(first);
+        for (String candidate : order) {
+            if (!NSumRepoUrls.same(candidate, first)) {
+                sorted.add(candidate);
+            }
+        }
+        LOG.info("[NSUM] repository fallback order (fastest first): {}", sorted);
+        return sorted;
+    }
+
+    private static boolean isType(String preference) {
+        return "ssh".equals(preference) || "https".equals(preference) || "http".equals(preference);
+    }
+
+    private static boolean isExplicit(String preference) {
+        if (preference == null || preference.isBlank() || "auto".equals(preference)
+                || "manual".equals(preference) || isType(preference)) {
+            return false;
+        }
+        return true;
+    }
+
+    private static boolean contains(List<String> urls, String value) {
+        return urls.stream().anyMatch(url -> NSumRepoUrls.same(url, value));
+    }
+
+    private static void moveFirst(List<String> order, List<String> candidates,
+                                  java.util.function.Predicate<String> match) {
+        for (String candidate : candidates) {
+            if (!contains(order, candidate) && match.test(candidate)) {
+                order.add(candidate);
+                return;
+            }
+        }
+    }
+
+    /// Probes every candidate in parallel and returns the address with the lowest latency.
+    static Optional<String> fastest(List<String> candidates, Consumer<String> onLine) {
+        if (candidates == null || candidates.isEmpty()) {
+            return Optional.empty();
+        }
+        if (!NSumGit.available()) {
+            LOG.warn("[NSUM] git is not available, repository fallback is limited to the Runtime");
+            return Optional.empty();
+        }
+        int threads = Math.min(4, candidates.size());
+        java.util.concurrent.ExecutorService pool =
+                java.util.concurrent.Executors.newFixedThreadPool(threads);
+        try {
+            java.util.Map<String, java.util.concurrent.Future<Long>> probes = new java.util.LinkedHashMap<>();
+            for (String candidate : candidates) {
+                probes.put(candidate, pool.submit(
+                        () -> NSumGit.probeLatency(candidate, NSumGit.PROBE_TIMEOUT_SECONDS)));
+            }
+            String best = null;
+            long bestLatency = Long.MAX_VALUE;
+            for (java.util.Map.Entry<String, java.util.concurrent.Future<Long>> entry : probes.entrySet()) {
+                long latency;
+                try {
+                    latency = entry.getValue().get();
+                } catch (Exception e) {
+                    latency = -1;
+                }
+                LOG.info("[NSUM] repository probe: {} -> {}", entry.getKey(),
+                        latency >= 0 ? latency + "ms" : "unreachable");
+                if (latency >= 0 && latency < bestLatency) {
+                    best = entry.getKey();
+                    bestLatency = latency;
+                }
+                if (latency < 0) {
+                    notify(onLine, "[*] Repository address unreachable: " + entry.getKey());
+                }
+            }
+            return Optional.ofNullable(best);
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     /// First address that answers `git ls-remote`, in list order.
@@ -171,7 +257,8 @@ final class NSumRepoResolver {
                     NSumGit.deleteRecursively(target);
                 }
             }
-            exitCode = NSumGit.run(List.of("clone", candidate, target.toString()), 1800).exitCode();
+            exitCode = NSumGit.run(List.of("clone", candidate, target.toString()),
+                    NSumRepoPreferences.cloneTimeoutSeconds()).exitCode();
             lastUrl = candidate;
             if (exitCode == 0) {
                 LOG.info("[NSUM] repository cloned from {}", candidate);

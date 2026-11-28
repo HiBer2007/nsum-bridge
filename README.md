@@ -91,8 +91,9 @@ NSUM 导出的 `nsum.index.json` 里 `repository.urls[]` 是 `[{type: "ssh"|"htt
 
 地址会去重（忽略尾部 `/` 与大小写），`NSumInstance.repo()` 返回列表第一个地址，`orderedRepoUrls()` 返回完整回退顺序。行为：
 
-- 有多个地址且还没有「上次可用地址」时，先用 `git ls-remote` 探测，第一个可达的排到最前；
-- 同步失败（异常或 Runtime 非 0 退出）只记 warning，HUD 显示 `Repository fallback: …`，随后按顺序换下一个地址；全部失败才把**第一个**错误报给用户；
+- 有多个地址且还没有「上次可用地址」时，**并行** `git ls-remote` 探测所有地址，延迟最低的排到最前（自动最快，自 0.4.6.17）；
+- 每个地址有独立超时：探测 8s、同步 300s、手动克隆 180s（可通过 `.hmcl/nsum/repo.properties` 或系统属性调整）；超时/异常/Runtime 非 0 退出只记 warning，HUD 显示 `Repository fallback: …`，随后换下一个地址；全部失败才把**第一个**错误报给用户；
+- 手动指定：`.hmcl/nsum/repo.properties` 的 `preference=auto|ssh|https|http|manual|<URL>`（`auto` 为默认；`ssh/https/http` 优先该协议，`manual` 保持清单顺序，显式 URL 最优先），或系统属性 `-Dnsum.repo.preference=...`。
 - 已有仓库不回退重克隆：定位 `<LOCALAPPDATA>/NeoServerUpdateModpack/cache/repos/<slug>` 下的 Runtime 检出目录，`git remote set-url` 指向新地址后继续用同一个目录；
 - 成功后把实际使用的地址写入实例标记 `activeRepoUrl`，下次启动直接用它（不再探测）；
 - 手动「克隆 NSUM 仓库」失败时会对 `https↔ssh` 互转地址再试一次，目标目录始终只有一个，失败残留清理后再试。

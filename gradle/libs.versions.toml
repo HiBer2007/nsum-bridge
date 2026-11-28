@@ -1,6 +1,6 @@
 # nsum-bridge 独立版本目录（不依赖 FLFHMCL 工作区）
 [versions]
-nsumBridge   = "0.4.6"
+nsumBridge   = "0.4.6.17"
 
 hmcl         = "3.17.2"
 fabricLoader = "0.19.3"

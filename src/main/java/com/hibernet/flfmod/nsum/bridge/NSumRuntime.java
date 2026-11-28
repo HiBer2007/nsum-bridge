@@ -276,6 +276,22 @@ public final class NSumRuntime {
                     .directory(NSumPaths.hmclHome().toFile())
                     .redirectErrorStream(true);
             Process process = builder.start();
+            final int timeoutSeconds = NSumRepoPreferences.syncTimeoutSeconds();
+            final java.util.concurrent.atomic.AtomicBoolean timedOut =
+                    new java.util.concurrent.atomic.AtomicBoolean(false);
+            java.util.concurrent.ScheduledExecutorService watchdog =
+                    java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                        Thread thread = new Thread(r, "nsum-sync-watchdog");
+                        thread.setDaemon(true);
+                        return thread;
+                    });
+            watchdog.schedule(() -> {
+                if (process.isAlive()) {
+                    timedOut.set(true);
+                    LOG.warn("[NSUM] sync timed out after {}s, killing process", timeoutSeconds);
+                    process.destroyForcibly();
+                }
+            }, timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS);
             try (var reader = process.getInputStream()) {
                 byte[] buffer = new byte[8192];
                 int read;
@@ -300,6 +316,11 @@ public final class NSumRuntime {
                 }
             }
             exit = process.waitFor();
+            watchdog.shutdownNow();
+            if (timedOut.get()) {
+                return new Attempt(-3, output.toString(), false,
+                        "同步超时（" + timeoutSeconds + "s），尝试下一个地址");
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return new Attempt(-1, output.toString(), false, "同步被中断");
