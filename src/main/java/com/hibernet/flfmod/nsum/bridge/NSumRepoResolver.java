@@ -69,7 +69,8 @@ final class NSumRepoResolver {
                 order.add(candidate);
             }
         }
-        if (order.size() <= 1 || isExplicit(preference) || isType(preference) || !active.isEmpty()) {
+        if (order.size() <= 1 || isExplicit(preference) || isType(preference)
+                || "manual".equals(preference) || !active.isEmpty()) {
             return order;
         }
         Optional<String> fastest = fastest(candidates, onLine);
