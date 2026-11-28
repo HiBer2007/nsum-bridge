@@ -19,7 +19,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -78,19 +77,23 @@ public final class NSumRepoActions {
                     NSumEditor.open(target.toString());
                     return;
                 }
-                List<String> command = new ArrayList<>();
-                command.add(gitExecutable());
-                command.add("clone");
-                command.add(url);
-                command.add(target.toString());
-                int exit = run(command);
-                if (exit != 0) {
-                    Platform.runLater(() -> dialog("克隆失败（git exit " + exit + "）：" + url,
-                            FLFDialogs.Type.ERROR));
+                // The target directory is created at most once: every retry reuses it, so a
+                // fallback address never produces a second clone next to this one.
+                boolean owned = !Files.exists(target) || NSumGit.isEmptyDirectory(target);
+                NSumRepoResolver.CloneResult result = NSumRepoResolver.cloneWithFallback(
+                        NSumRepoResolver.cloneCandidates(url), target, owned);
+                if (!result.ok()) {
+                    String failure = "克隆失败（git exit " + result.exitCode() + "）：" + result.url();
+                    Platform.runLater(() -> dialog(failure, FLFDialogs.Type.ERROR));
                     return;
                 }
+                String cloned = result.url();
                 Platform.runLater(() -> {
-                    dialog("仓库已克隆：" + target, FLFDialogs.Type.SUCCESS);
+                    String text = "仓库已克隆：" + target;
+                    if (!NSumRepoUrls.same(cloned, url)) {
+                        text = text + "\n\n主地址不可用，已改用：" + cloned;
+                    }
+                    dialog(text, FLFDialogs.Type.SUCCESS);
                     NSumEditor.open(target.toString());
                 });
             } catch (Exception e) {
@@ -108,7 +111,7 @@ public final class NSumRepoActions {
                 if (!Files.isRegularFile(workspace)) {
                     Files.writeString(workspace, TEMPLATE, StandardCharsets.UTF_8);
                 }
-                int exit = run(List.of(gitExecutable(), "init", "-b", "main", target.toString()));
+                int exit = run(List.of(NSumGit.executable(), "init", "-b", "main", target.toString()));
                 if (exit != 0) {
                     LOG.warn("[NSUM] git init 失败（exit={}），仓库仍可作为本地目录使用", exit);
                 }
@@ -126,25 +129,11 @@ public final class NSumRepoActions {
 
     private static int run(List<String> command) throws IOException, InterruptedException {
         LOG.info("[NSUM] 执行: {}", String.join(" ", command));
-        ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
-        Process process = builder.start();
-        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        int exit = process.waitFor();
-        if (exit != 0) {
-            LOG.warn("[NSUM] 命令失败（exit={}）: {}", exit, output);
+        NSumGit.Result result = NSumGit.runCommand(command, 1800);
+        if (result.exitCode() != 0) {
+            LOG.warn("[NSUM] 命令失败（exit={}）: {}", result.exitCode(), result.output());
         }
-        return exit;
-    }
-
-    private static String gitExecutable() {
-        Path dir = NSumPaths.runtimeDir().resolve("tools").resolve("git");
-        for (String relative : List.of("cmd/git.exe", "bin/git.exe", "mingw64/bin/git.exe", "ucrt64/bin/git.exe")) {
-            Path candidate = dir.resolve(relative);
-            if (Files.isRegularFile(candidate)) {
-                return candidate.toString();
-            }
-        }
-        return "git";
+        return result.exitCode();
     }
 
     private static String safeName(String name) {

@@ -61,6 +61,8 @@ public final class NSumBranchWizard {
 
     private final List<String> gitBranches = new ArrayList<>();
     private final List<BranchOption> modpackBranches = new ArrayList<>();
+    /// Repository address that actually answered (empty until a candidate worked).
+    private volatile String resolvedRepo = "";
     private String selectedGitBranch = "";
     private String selectedModpack = "";
     private int page = 0;
@@ -123,35 +125,59 @@ public final class NSumBranchWizard {
     private void loadGitBranches() {
         page = 0;
         renderPage();
-        String repo = instance.repo;
-        if (repo == null || repo.isBlank()) {
-            status.setText("实例未配置仓库地址");
-            return;
+        List<String> candidates = NSumRepoResolver.candidates(instance);
+        if (candidates.isEmpty()) {
+            String primary = instance.repo();
+            if (primary.isBlank()) {
+                status.setText("实例未配置仓库地址");
+                return;
+            }
+            candidates = List.of(primary);
         }
+        List<String> repoCandidates = candidates;
         loading = true;
         updateButtons();
         status.setText("正在通过 Runtime 解析 Git 分支…");
         CompletableFuture.runAsync(() -> {
             List<String> branches = new ArrayList<>();
             String error = null;
-            try {
-                Optional<JsonObject> json = NSumRuntimeCli.gitBranches(repo, this::appendProgress);
-                json.ifPresent(obj -> {
-                    JsonArray array = obj.getAsJsonObject("data").getAsJsonArray("branches");
-                    for (JsonElement element : array) {
-                        branches.add(element.getAsString());
-                    }
-                });
-                if (branches.isEmpty()) {
-                    error = "Runtime 未返回任何 Git 分支";
+            String working = "";
+            boolean probe = repoCandidates.size() > 1;
+            for (int index = 0; index < repoCandidates.size() && branches.isEmpty(); index++) {
+                String candidate = repoCandidates.get(index);
+                if (index > 0) {
+                    appendProgress("仓库地址不可用，尝试下一个：" + candidate);
                 }
-            } catch (Exception e) {
-                error = e.getMessage();
+                if (probe && !NSumGit.reachable(candidate, NSumGit.PROBE_TIMEOUT_SECONDS)) {
+                    error = "仓库地址不可达：" + candidate;
+                    continue;
+                }
+                try {
+                    // Reuse an existing checkout of another address instead of cloning a copy.
+                    String request = NSumRepoResolver.requestAddressFor(instance, candidate);
+                    Optional<JsonObject> json = NSumRuntimeCli.gitBranches(request, this::appendProgress);
+                    if (json.isPresent() && json.get().has("data")) {
+                        JsonArray array = json.get().getAsJsonObject("data").getAsJsonArray("branches");
+                        for (JsonElement element : array) {
+                            branches.add(element.getAsString());
+                        }
+                    }
+                    if (branches.isEmpty()) {
+                        error = "Runtime 未返回任何 Git 分支（" + candidate + "）";
+                    } else {
+                        working = request;
+                    }
+                } catch (Exception e) {
+                    error = e.getMessage();
+                    branches.clear();
+                }
             }
             List<String> loaded = branches;
             String failure = error;
+            String resolved = working;
             Platform.runLater(() -> {
                 loading = false;
+                resolvedRepo = resolved;
                 gitBranches.clear();
                 gitBranches.addAll(loaded);
                 list.getItems().setAll(loaded);
@@ -195,7 +221,7 @@ public final class NSumBranchWizard {
         loading = true;
         updateButtons();
         status.setText("正在解析整合包分支（Git 分支 " + selectedGitBranch + "）…");
-        String repo = instance.repo;
+        String repo = activeRepo();
         String gitBranch = selectedGitBranch;
         CompletableFuture.runAsync(() -> {
             List<BranchOption> options = new ArrayList<>();
@@ -333,7 +359,7 @@ public final class NSumBranchWizard {
     private void renderSummary() {
         BranchOption option = currentOption();
         summaryBox.getChildren().setAll(
-                row("仓库", instance.repo),
+                row("仓库", activeRepo()),
                 row("Git 分支", selectedGitBranch),
                 row("整合包分支", selectedModpack),
                 row("分支类型", option == null ? "" : option.type),
@@ -366,7 +392,7 @@ public final class NSumBranchWizard {
     private void accept() {
         BranchOption option = currentOption();
         NSumBranchSelection selection = new NSumBranchSelection(
-                instance.repo,
+                activeRepo(),
                 selectedGitBranch,
                 selectedModpack,
                 option == null ? instance.branchType : option.type,
@@ -375,6 +401,13 @@ public final class NSumBranchWizard {
                 option == null ? instance.modloaderVersion : option.modloaderVersion,
                 option == null ? instance.core : option.core);
         close(selection);
+    }
+
+    /// Repository address to use right now: the one a candidate probe resolved, else the
+    /// instance's primary address.
+    private String activeRepo() {
+        String resolved = resolvedRepo;
+        return resolved == null || resolved.isBlank() ? instance.repo() : resolved;
     }
 
     private void close(NSumBranchSelection selection) {

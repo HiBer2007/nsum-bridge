@@ -33,6 +33,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HexFormat;
 import java.util.Set;
@@ -93,6 +94,12 @@ public final class NSumModpackProvider implements FLFModpackProvider {
         JsonObject repositoryObj = obj.has("repository") && obj.get("repository").isJsonObject()
                 ? obj.getAsJsonObject("repository")
                 : new JsonObject();
+        // New layout: repository.urls[] (ordered, typed). Legacy packs only carry
+        // repository.url, oldest ones only instance.repo - both end up in the same list.
+        instance.repoUrls = new ArrayList<>(NSumRepoUrls.fromManifest(repositoryObj, instance.repo));
+        if (instance.repo.isBlank() && !instance.repoUrls.isEmpty()) {
+            instance.repo = instance.repoUrls.get(0).url();
+        }
         instance.defaultBranch = optString(repositoryObj, "default_branch", "");
         instance.sourceCommit = optString(repositoryObj, "commit", "");
         instance.sourceGitBranch = optString(repositoryObj, "git_branch", "");
@@ -108,8 +115,8 @@ public final class NSumModpackProvider implements FLFModpackProvider {
         }
         modpack.instance = instance;
 
-        LOG.info("[NSUM] 识别整合包: name={}, version={}, repo={}, branch={}",
-                modpack.name, modpack.version, instance.repo, instance.branch);
+        LOG.info("[NSUM] 识别整合包: name={}, version={}, repo={} ({} 个地址), branch={}",
+                modpack.name, modpack.version, instance.repo(), instance.repoUrls.size(), instance.branch);
         return modpack;
     }
 
@@ -211,7 +218,7 @@ public final class NSumModpackProvider implements FLFModpackProvider {
             LOG.info("[NSUM] 实例已创建: {} (pack_format={}, embedded={} 个文件, commit={}, repo={})",
                     versionRoot, packFormat, extracted,
                     sourceCommit.isBlank() ? "-" : sourceCommit.substring(0,
-                            Math.min(12, sourceCommit.length())), instance.repo);
+                            Math.min(12, sourceCommit.length())), instance.repo());
 
             if (NSumRuntime.status().installed()) {
                 NSumRuntime.SyncResult result = NSumRuntime.sync(instance, versionRoot);

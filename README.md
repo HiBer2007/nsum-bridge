@@ -14,6 +14,7 @@
 | GUI | `FLFHMCLUIApi` | 侧栏分类 `nsum` / 页面 `nsum-bridge:home` |
 
 - 导入 `.nsumpack`（NSUM 清单型整合包）→ 建实例 + 写 `.NSUM/instance.json`；默认包不含文件，附带文件按清单 `embedded[]` 安装并缓存到 `.hmcl/nsum/cache/files/`；
+- 清单 `repository.urls[]` 的多个仓库地址按顺序回退（见下文「多仓库地址回退」）；
 - 启动 NSUM 实例时先让 **NSUM Runtime** 同步仓库内容，成功后再交回 HMCL 正常启动；
 - Runtime 由本模组自行安装到 `<HMCL>/.hmcl/nsum/runtime/`（自动下载后续再做）；
 - **版本描述 `<id>.json` 由本模组生成**（`NSumVersionDescriptor`）：优先继承已安装的 Fabric 版本并复制其 mainClass/arguments/libraries，缺失时写最小描述并告警；安装与每次启动前幂等补齐。
@@ -79,6 +80,24 @@ retries=2
 
   也可用系统属性覆盖：`-Dnsum.download.threads=8`、`-Dnsum.download.minSizeMB=8`、`-Dnsum.download.enabled=false`。
 
+
+## 多仓库地址回退
+
+NSUM 导出的 `nsum.index.json` 里 `repository.urls[]` 是 `[{type: "ssh"|"https"|"http", url: "..."}]`，`repository.url` 仍是旧版主地址。bridge 按下面的顺序取地址：
+
+1. `repository.urls[]`（保持清单顺序与 type）；
+2. 数组缺失或为空 → `repository.url`；
+3. 仍为空 → 旧包的 `instance.repo`。
+
+地址会去重（忽略尾部 `/` 与大小写），`NSumInstance.repo()` 返回列表第一个地址，`orderedRepoUrls()` 返回完整回退顺序。行为：
+
+- 有多个地址且还没有「上次可用地址」时，先用 `git ls-remote` 探测，第一个可达的排到最前；
+- 同步失败（异常或 Runtime 非 0 退出）只记 warning，HUD 显示 `Repository fallback: …`，随后按顺序换下一个地址；全部失败才把**第一个**错误报给用户；
+- 已有仓库不回退重克隆：定位 `<LOCALAPPDATA>/NeoServerUpdateModpack/cache/repos/<slug>` 下的 Runtime 检出目录，`git remote set-url` 指向新地址后继续用同一个目录；
+- 成功后把实际使用的地址写入实例标记 `activeRepoUrl`，下次启动直接用它（不再探测）；
+- 手动「克隆 NSUM 仓库」失败时会对 `https↔ssh` 互转地址再试一次，目标目录始终只有一个，失败残留清理后再试。
+
+清单解析在 `NSumRepoUrls`（纯 JSON，无 HMCL 依赖），探测与 remote 操作在 `NSumGit` / `NSumRepoResolver`，相关单元测试见 `src/test/java`（`.\gradlew.bat test`）。
 
 ## 自检（无界面）
 

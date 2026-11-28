@@ -63,6 +63,10 @@ public final class NSumBranchSelection {
         if (instance == null) {
             return;
         }
+        if (repo != null && !repo.isBlank()) {
+            // The wizard only reports an address that actually answered, so remember it.
+            instance.setActiveRepo(repo);
+        }
         if (gitBranch != null && !gitBranch.isBlank()) {
             instance.gitBranch = gitBranch;
         }

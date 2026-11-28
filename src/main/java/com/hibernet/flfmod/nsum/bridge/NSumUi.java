@@ -190,7 +190,7 @@ public final class NSumUi {
             for (Path root : instances) {
                 NSumInstance.read(root).ifPresent(instance -> {
                     children.add(FLFComponents.label(
-                            root.getFileName() + "  →  " + instance.repo + " / " + instance.branch
+                            root.getFileName() + "  →  " + instance.repo() + " / " + instance.branch
                                     + (instance.lastSync.isBlank() ? "" : "（上次同步 " + instance.lastSync + "）")));
                     children.add(FLFComponents.button(
                             "同步 " + root.getFileName() + " 并生成版本描述",

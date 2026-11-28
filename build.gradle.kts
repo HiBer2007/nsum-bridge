@@ -60,9 +60,31 @@ val flfApiJars = files(
     apiJar("flf-ui-api", "flf-ui-api-${libs.versions.flfUiApi.get()}.jar"),
 )
 
+// 单元测试依赖（JUnit 5）从镜像解析；编译依赖仍全部取本地 jar，离线也能 build。
+repositories {
+    maven {
+        name = "aliyun"
+        url = uri("https://maven.aliyun.com/repository/public")
+    }
+    mavenCentral()
+}
+
 dependencies {
     compileOnly(compileLibraries)
     compileOnly(flfApiJars)
+
+    testImplementation(files(library("gson-${libs.versions.gson.get()}.jar")))
+    testImplementation(files(library("log4j-api-${libs.versions.log4j.get()}.jar")))
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
+}
+
+tasks.test {
+    useJUnitPlatform()
+    testLogging {
+        events("passed", "skipped", "failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }
 
 java {

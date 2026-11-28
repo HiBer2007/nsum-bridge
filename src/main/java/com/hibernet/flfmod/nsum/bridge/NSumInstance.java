@@ -21,6 +21,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 /// 实例级 NSUM 标记：<实例目录>/.NSUM/instance.json。
@@ -34,8 +36,14 @@ public final class NSumInstance {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     public int schema = 1;
-    /// 仓库地址：http(s) URL 或本地路径。
+    /// 仓库主地址（旧字段）：`repository.url` 或旧包的 `instance.repo`。
+    /// 新包可能同时带多个地址，见 [repoUrls]。
     public String repo = "";
+    /// All repository addresses in manifest order (first entry = primary address).
+    /// Written manually in [write] so the JSON keeps the `[{type,url}]` shape.
+    public transient List<NSumRepoUrl> repoUrls = new ArrayList<>();
+    /// Last address that actually worked (remembered so later launches skip dead addresses).
+    public String activeRepoUrl = "";
     /// 整合包分支（合并用）。
     public String branch = "base";
     /// 分支类型：universal / client / server（服务端专用包不能用于客户端启动）。
@@ -82,6 +90,12 @@ public final class NSumInstance {
             NSumInstance instance = new NSumInstance();
             if (obj.has("schema")) instance.schema = obj.get("schema").getAsInt();
             if (obj.has("repo")) instance.repo = obj.get("repo").getAsString();
+            if (obj.has("repoUrls")) instance.repoUrls = NSumRepoUrls.parseUrls(obj.get("repoUrls"));
+            if (instance.repoUrls.isEmpty()) {
+                // Legacy marker: synthesize the address list from the single repo field.
+                instance.repoUrls = new ArrayList<>(NSumRepoUrls.single(instance.repo));
+            }
+            if (obj.has("activeRepoUrl")) instance.activeRepoUrl = obj.get("activeRepoUrl").getAsString();
             if (obj.has("branch")) instance.branch = obj.get("branch").getAsString();
             if (obj.has("branchType")) instance.branchType = obj.get("branchType").getAsString();
             if (obj.has("gitBranch")) instance.gitBranch = obj.get("gitBranch").getAsString();
@@ -110,15 +124,54 @@ public final class NSumInstance {
     public void write(Path versionRoot) throws IOException {
         Path file = NSumPaths.instanceMarker(versionRoot);
         Files.createDirectories(file.getParent());
-        Files.writeString(file, GSON.toJson(this), StandardCharsets.UTF_8);
+        JsonObject marker = GSON.toJsonTree(this).getAsJsonObject();
+        marker.add("repoUrls", NSumRepoUrls.toJson(repoUrls));
+        Files.writeString(file, GSON.toJson(marker), StandardCharsets.UTF_8);
     }
 
     public void touchSyncTime() {
         lastSync = Instant.now().toString();
     }
 
+    /// Primary repository address: the first entry of [repoUrls], falling back to the
+    /// legacy [repo] field. Blank when the instance has no address at all.
+    public String repo() {
+        if (repoUrls != null) {
+            for (NSumRepoUrl address : repoUrls) {
+                if (address != null && address.present()) {
+                    return address.url();
+                }
+            }
+        }
+        return repo == null ? "" : repo.trim();
+    }
+
+    /// All addresses in fallback order: the remembered working address first (when known),
+    /// then the manifest order, then the legacy [repo] field. De-duplicated.
+    public List<String> orderedRepoUrls() {
+        List<NSumRepoUrl> merged = new ArrayList<>();
+        if (repoUrls != null) {
+            merged.addAll(repoUrls);
+        }
+        if (repo != null && !repo.isBlank()) {
+            merged.add(NSumRepoUrl.of(repo));
+        }
+        List<String> urls = new ArrayList<>(NSumRepoUrls.urls(NSumRepoUrls.dedupe(merged)));
+        String active = activeRepoUrl == null ? "" : activeRepoUrl.trim();
+        if (!active.isEmpty()) {
+            urls.removeIf(candidate -> NSumRepoUrls.same(candidate, active));
+            urls.add(0, active);
+        }
+        return urls;
+    }
+
+    /// Remembers the address that worked, so the next launch starts there.
+    public void setActiveRepo(String url) {
+        activeRepoUrl = url == null ? "" : url.trim();
+    }
+
     public boolean hasRepo() {
-        return repo != null && !repo.isBlank();
+        return !repo().isBlank();
     }
 
     public boolean matchesType(String type) {

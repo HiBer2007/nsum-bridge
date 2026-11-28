@@ -24,6 +24,7 @@ import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 /// NSUM Runtime 的安装、检测与调用。
@@ -120,6 +121,16 @@ public final class NSumRuntime {
     public record SyncResult(boolean success, int exitCode, Path logFile, String message) {
     }
 
+    /// One Runtime invocation.
+    record Attempt(int exitCode, String output, boolean cancelled, String message) {
+    }
+
+    /// Runs one attempt against a repository address (extracted so the fallback loop can be
+    /// tested without a Runtime installation).
+    interface AttemptRunner {
+        Attempt run(String repoAddress);
+    }
+
     /// 调用 Runtime 同步实例目录。
     public static SyncResult sync(NSumInstance instance, Path versionRoot) {
         return sync(instance, versionRoot, null);
@@ -132,6 +143,12 @@ public final class NSumRuntime {
     }
 
     /// 带取消判定的同步：检测到取消时强制结束 Runtime 进程并返回失败。
+    ///
+    /// <p>Every repository address of the instance is tried in order: a failing address
+    /// (exception or non-zero exit) logs a warning and the next one is attempted. An existing
+    /// checkout is repointed with `git remote set-url` instead of being cloned again, so a
+    /// fallback never creates a second repository directory. Only when all addresses failed is
+    /// the first error reported.</p>
     public static SyncResult sync(NSumInstance instance, Path versionRoot,
                                    java.util.function.Consumer<String> onLine,
                                    java.util.function.BooleanSupplier cancelled) {
@@ -144,12 +161,102 @@ public final class NSumRuntime {
             return new SyncResult(false, -1, null, "实例未配置仓库地址（.NSUM/instance.json 缺少 repo）");
         }
 
+        Path logFile;
+        try {
+            Files.createDirectories(NSumPaths.logDir());
+            logFile = NSumPaths.logDir().resolve("sync-" + System.currentTimeMillis() + ".log");
+        } catch (IOException e) {
+            return new SyncResult(false, -1, null, "无法创建日志目录: " + e.getMessage());
+        }
+
+        return syncWithFallback(instance, versionRoot, logFile, onLine,
+                address -> runSync(instance, versionRoot, address, onLine, cancelled));
+    }
+
+    /// Tries every repository address in fallback order until one succeeds.
+    ///
+    /// <p>A failing attempt (exception or non-zero exit) is logged and the next address is
+    /// used; an existing checkout is repointed instead of cloned again. When every address
+    /// failed, the first error is reported so the caller sees the primary problem.</p>
+    static SyncResult syncWithFallback(NSumInstance instance, Path versionRoot, Path logFile,
+                                       java.util.function.Consumer<String> onLine,
+                                       AttemptRunner runner) {
+        List<String> order = NSumRepoResolver.attemptOrder(instance, onLine);
+        StringBuilder log = new StringBuilder();
+        SyncResult firstFailure = null;
+        String previousAddress = null;
+        for (int index = 0; index < order.size(); index++) {
+            String address = order.get(index);
+            String requestAddress = address;
+            if (index > 0) {
+                Optional<String> reuse = NSumRepoResolver.adoptExistingCheckout(previousAddress, address);
+                if (reuse.isPresent()) {
+                    requestAddress = reuse.get();
+                    NSumRepoResolver.notify(onLine,
+                            "[*] Repository fallback (reusing checkout): " + address);
+                } else {
+                    LOG.warn("[NSUM] repository fallback, trying the next address: {}", address);
+                    NSumRepoResolver.notify(onLine, "[*] Repository fallback: " + address);
+                }
+            }
+            Attempt attempt;
+            try {
+                attempt = runner.run(requestAddress);
+            } catch (Throwable t) {
+                LOG.warn("[NSUM] sync attempt threw: {}", t.toString());
+                attempt = new Attempt(-1, "", false, "同步异常: " + t);
+            }
+            if (attempt == null) {
+                attempt = new Attempt(-1, "", false, "同步异常: 空结果");
+            }
+            log.append("===== attempt ").append(index + 1).append(": ").append(address)
+                    .append(System.lineSeparator()).append(attempt.output())
+                    .append(System.lineSeparator());
+            if (attempt.cancelled()) {
+                writeLog(logFile, log);
+                return new SyncResult(false, -2, logFile, "同步已取消");
+            }
+            if (attempt.exitCode() == 0) {
+                // Remember the address the Runtime was actually given: reusing an existing
+                // checkout only keeps working while that address still resolves to it.
+                instance.setActiveRepo(requestAddress);
+                instance.touchSyncTime();
+                try {
+                    instance.write(versionRoot);
+                } catch (IOException e) {
+                    LOG.warn("[NSUM] 更新实例同步时间失败: {}", e.toString());
+                }
+                writeLog(logFile, log);
+                LOG.info("[NSUM] 同步结束: exit=0, url={}, log={}", requestAddress, logFile);
+                return new SyncResult(true, 0, logFile, "同步成功");
+            }
+            previousAddress = requestAddress;
+            LOG.warn("[NSUM] sync via {} failed (exit={}): {}", address,
+                    attempt.exitCode(), attempt.message());
+            if (firstFailure == null) {
+                firstFailure = new SyncResult(false, attempt.exitCode(), logFile, attempt.message());
+            }
+        }
+
+        writeLog(logFile, log);
+        if (firstFailure == null) {
+            return new SyncResult(false, -1, logFile, "同步失败：没有可用的仓库地址");
+        }
+        LOG.error("[NSUM] sync failed on all {} repository address(es): {}",
+                order.size(), firstFailure.message());
+        return new SyncResult(false, firstFailure.exitCode(), logFile, firstFailure.message());
+    }
+
+    /// Runs one Runtime build for the given repository address and captures its output.
+    private static Attempt runSync(NSumInstance instance, Path versionRoot, String repoAddress,
+                                   java.util.function.Consumer<String> onLine,
+                                   java.util.function.BooleanSupplier cancelled) {
         List<String> command = new ArrayList<>();
         command.add(NSumPaths.runtimeExe().toString());
         command.add("exec");
         command.add("build");
         command.add("--repo");
-        command.add(instance.repo);
+        command.add(repoAddress);
         command.add("--modpack");
         command.add(instance.branch == null || instance.branch.isBlank() ? "base" : instance.branch);
         if (instance.gitBranch != null && !instance.gitBranch.isBlank()) {
@@ -161,17 +268,8 @@ public final class NSumRuntime {
         command.add("--export");
         command.add(versionRoot.toString());
 
-        Path logFile;
-        try {
-            Files.createDirectories(NSumPaths.logDir());
-            logFile = NSumPaths.logDir().resolve("sync-" + System.currentTimeMillis() + ".log");
-        } catch (IOException e) {
-            return new SyncResult(false, -1, null, "无法创建日志目录: " + e.getMessage());
-        }
-
         LOG.info("[NSUM] 同步开始: {}", String.join(" ", command));
         StringBuilder output = new StringBuilder();
-        boolean runCancelled = false;
         int exit;
         try {
             ProcessBuilder builder = new ProcessBuilder(command)
@@ -184,8 +282,7 @@ public final class NSumRuntime {
                 while ((read = reader.read(buffer)) > 0) {
                     if (cancelled != null && cancelled.getAsBoolean()) {
                         process.destroyForcibly();
-                        runCancelled = true;
-                        break;
+                        return new Attempt(-2, output.toString(), true, "同步已取消");
                     }
                     String chunk = new String(buffer, 0, read, StandardCharsets.UTF_8);
                     output.append(chunk);
@@ -203,34 +300,23 @@ public final class NSumRuntime {
                 }
             }
             exit = process.waitFor();
-            if (runCancelled) {
-                return new SyncResult(false, -2, logFile, "同步已取消");
-            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return new SyncResult(false, -1, logFile, "同步被中断");
+            return new Attempt(-1, output.toString(), false, "同步被中断");
         } catch (IOException e) {
-            return new SyncResult(false, -1, logFile, "无法启动 Runtime: " + e.getMessage());
+            return new Attempt(-1, output.toString(), false, "无法启动 Runtime: " + e.getMessage());
         }
 
+        return new Attempt(exit, output.toString(), false,
+                exit == 0 ? "同步成功" : "Runtime 退出码 " + exit);
+    }
+
+    private static void writeLog(Path logFile, CharSequence text) {
         try {
-            Files.writeString(logFile, output.toString(), StandardCharsets.UTF_8);
+            Files.writeString(logFile, text.toString(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             LOG.warn("[NSUM] 写入同步日志失败: {}", e.toString());
         }
-
-        if (exit == 0) {
-            instance.touchSyncTime();
-            try {
-                instance.write(versionRoot);
-            } catch (IOException e) {
-                LOG.warn("[NSUM] 更新实例同步时间失败: {}", e.toString());
-            }
-        }
-
-        LOG.info("[NSUM] 同步结束: exit={}, log={}", exit, logFile);
-        return new SyncResult(exit == 0, exit, logFile,
-                exit == 0 ? "同步成功" : "Runtime 退出码 " + exit);
     }
 
     private static void copyTree(Path source, Path target) throws IOException {

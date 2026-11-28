@@ -1,6 +1,6 @@
 # nsum-bridge 独立版本目录（不依赖 FLFHMCL 工作区）
 [versions]
-nsumBridge   = "0.4.4.17"
+nsumBridge   = "0.4.5.17"
 
 hmcl         = "3.17.2"
 fabricLoader = "0.19.3"
@@ -8,6 +8,10 @@ spongeMixin  = "0.17.3+mixin.0.8.7"
 javafx       = "17.0.13"
 log4j        = "2.24.3"
 gson         = "2.10.1"
+
+# 单元测试（仅 test 配置需要，构建产物不含）
+junit           = "5.10.1"
+junitPlatform   = "1.10.1"
 
 # FLF API 编译期依赖的模块版本（与工作区 libs.versions.toml 对齐）
 flfApi        = "2.2.2.17"
@@ -20,4 +24,6 @@ fabric-loader = { module = "net.fabricmc:fabric-loader", version.ref = "fabricLo
 sponge-mixin  = { module = "net.fabricmc:sponge-mixin", version.ref = "spongeMixin" }
 log4j-api     = { module = "org.apache.logging.log4j:log4j-api", version.ref = "log4j" }
 gson          = { module = "com.google.code.gson:gson", version.ref = "gson" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junitPlatform" }
 
